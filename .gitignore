@@ -1,0 +1,28 @@
+# ── Secrets — NEVER commit these ──────────────────────────────
+.env
+youtube_token.json
+client_secret.json
+*.json.bak
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.Python
+env/
+venv/
+.venv/
+
+# ── Pipeline runtime files ────────────────────────────────────
+.temp/
+.logs/
+*.tmp
+
+# ── OS files ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

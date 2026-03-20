@@ -1,0 +1,73 @@
+# .github/workflows/upload.yml
+# ============================================================
+# Runs the pipeline 3× per day at 6 PM, 7 PM, 8 PM IST
+# (= 12:30, 13:30, 14:30 UTC)
+#
+# You can also trigger it manually:
+# GitHub → Actions tab → "Upload Video" → Run workflow
+# ============================================================
+
+name: Upload Video
+
+on:
+  schedule:
+    - cron: '30 12 * * *'   # 6:00 PM IST
+    - cron: '30 13 * * *'   # 7:00 PM IST
+    - cron: '30 14 * * *'   # 8:00 PM IST
+  workflow_dispatch:          # Manual trigger from GitHub UI
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20       # Kill job if it hangs
+
+    steps:
+      # 1. Check out your code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Python 3.11
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. Install FFmpeg (required for video creation)
+      - name: Install FFmpeg
+        run: sudo apt-get update -q && sudo apt-get install -y ffmpeg
+
+      # 4. Install Python packages
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # 5. Decode YouTube token (stored as base64 in GitHub Secret)
+      - name: Restore YouTube token
+        run: |
+          echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > youtube_token.json
+          echo "✓ youtube_token.json restored"
+
+      # 6. Decode YouTube client secret
+      - name: Restore client secret
+        run: |
+          echo "${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}" | base64 -d > client_secret.json
+          echo "✓ client_secret.json restored"
+
+      # 7. Run the pipeline
+      - name: Run pipeline
+        env:
+          GROQ_API_KEY:            ${{ secrets.GROQ_API_KEY }}
+          EMAIL_SENDER:            ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD:      ${{ secrets.EMAIL_APP_PASSWORD }}
+          INSTAGRAM_ACCESS_TOKEN:  ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_USER_ID:       ${{ secrets.INSTAGRAM_USER_ID }}
+          FACEBOOK_ACCESS_TOKEN:   ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
+          FACEBOOK_PAGE_ID:        ${{ secrets.FACEBOOK_PAGE_ID }}
+        run: python pipeline.py
+
+      # 8. Always clean up sensitive files (even if step 7 failed)
+      - name: Clean up secrets
+        if: always()
+        run: |
+          rm -f youtube_token.json client_secret.json
+          echo "✓ Secret files removed"

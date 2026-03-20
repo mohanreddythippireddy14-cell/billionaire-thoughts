@@ -1,0 +1,44 @@
+# .github/workflows/weekly_report.yml
+# ============================================================
+# Sends a weekly performance email every Sunday at 9:30 AM IST
+# (= 4:00 UTC Sunday)
+# ============================================================
+
+name: Weekly Report
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'    # Sunday 9:30 AM IST
+  workflow_dispatch:         # Manual trigger
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore YouTube token
+        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > youtube_token.json
+
+      - name: Send weekly report
+        env:
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
+          EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+        run: python analytics.py
+
+      - name: Clean up
+        if: always()
+        run: rm -f youtube_token.json client_secret.json
