@@ -1,42 +1,64 @@
 # video_creator.py
 # ============================================================
-# Creates the final video using Pillow (images) + FFmpeg (video)
+# Creates the final video using Pexels video backgrounds + FFmpeg
 #
 # Video structure:
 #   ┌─────────────────────────────────────┐
 #   │  Intro     (2s)  — channel branding │
-#   │  Main     (22s)  — finance content  │
+#   │  Main     (22s)  — cinematic video  │  ← Pexels background
 #   │  Outro     (3s)  — follow CTA       │
 #   └─────────────────────────────────────┘
 #   Total: ~27 seconds — perfect for YouTube Shorts
 #   Format: 1080×1920 (9:16 portrait), 30fps, H.264
+#
+# Background selection:
+#   - Fetches dark cinematic video from Pexels API based on mood
+#   - Falls back to gradient if Pexels API unavailable
+#   - Text overlay rendered with Pillow, composited with FFmpeg
 # ============================================================
 
 import logging
+import os
+import random
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
+import requests
 from PIL import Image, ImageDraw, ImageFont
 
 from config import (
     CHANNEL_NAME, FONTS_DIR, INTRO_DURATION_SECONDS,
-    LOGS_DIR, MAIN_DURATION_SECONDS, MUSIC_DIR,
+    MAIN_DURATION_SECONDS, MUSIC_DIR,
     OUTRO_DURATION_SECONDS, TEMP_DIR, VIDEO_FPS,
     VIDEO_HEIGHT, VIDEO_WIDTH, VISUAL_THEMES,
 )
 
 log = logging.getLogger("VideoCreator")
 
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+
+# Mood → Pexels search queries (multiple for variety)
+MOOD_QUERIES = {
+    "dark_truth": [
+        "dark silhouette man", "dark forest night", "dark shadow cinematic",
+        "lone man walking night", "dark rain city", "shadow figure dramatic",
+    ],
+    "mindset": [
+        "mountain peak fog", "dark sky storm", "man standing cliff",
+        "dark ocean waves", "silhouette warrior", "dark clouds moving",
+    ],
+    "wealth_fact": [
+        "city lights night", "skyscraper dark", "businessman night city",
+        "dark luxury", "night skyline", "dark office building",
+    ],
+}
+
 
 # ── Fonts ─────────────────────────────────────────────────────
 
 def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
-    """
-    Load font. Tries Montserrat first, then DejaVu (always on GitHub Actions),
-    then NotoSans, then PIL fallback.
-    """
     candidates = [
         FONTS_DIR / ("Montserrat-Bold.ttf" if bold else "Montserrat-Regular.ttf"),
         FONTS_DIR / "Montserrat-Bold.ttf",
@@ -52,12 +74,10 @@ def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
             return ImageFont.truetype(str(p), size)
         except Exception:
             continue
-    log.warning("No TTF font found — using PIL default")
     return ImageFont.load_default()
 
 
 def _emoji_font(size: int) -> ImageFont.FreeTypeFont:
-    """Load Noto Color Emoji font for proper emoji rendering."""
     candidates = [
         Path("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"),
         Path("/usr/share/fonts/noto/NotoColorEmoji.ttf"),
@@ -68,14 +88,91 @@ def _emoji_font(size: int) -> ImageFont.FreeTypeFont:
             return ImageFont.truetype(str(p), size)
         except Exception:
             continue
-    # Fallback to regular font — emoji will show as □ but won't crash
     return _font(size)
 
 
-# ── Background ────────────────────────────────────────────────
+# ── Pexels Video Fetcher ──────────────────────────────────────
+
+def _fetch_pexels_video(mood: str) -> Path | None:
+    """
+    Fetch a dark cinematic portrait video from Pexels.
+    Downloads to TEMP_DIR. Returns path or None on failure.
+    """
+    if not PEXELS_API_KEY:
+        log.warning("PEXELS_API_KEY not set — using gradient fallback")
+        return None
+
+    queries = MOOD_QUERIES.get(mood, MOOD_QUERIES["dark_truth"])
+    query   = random.choice(queries)
+
+    try:
+        log.info(f"Fetching Pexels video: '{query}'...")
+        resp = requests.get(
+            "https://api.pexels.com/videos/search",
+            headers={"Authorization": PEXELS_API_KEY},
+            params={
+                "query":       query,
+                "orientation": "portrait",
+                "size":        "medium",
+                "per_page":    15,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        videos = resp.json().get("videos", [])
+
+        if not videos:
+            # Fallback query
+            resp2  = requests.get(
+                "https://api.pexels.com/videos/search",
+                headers={"Authorization": PEXELS_API_KEY},
+                params={"query": "dark night", "orientation": "portrait", "per_page": 10},
+                timeout=20,
+            )
+            resp2.raise_for_status()
+            videos = resp2.json().get("videos", [])
+
+        if not videos:
+            log.warning("No Pexels videos found — using gradient fallback")
+            return None
+
+        video    = random.choice(videos[:10])
+        video_id = video["id"]
+        files    = video.get("video_files", [])
+
+        # Prefer portrait files, then pick highest resolution
+        portrait = [f for f in files if f.get("width", 0) < f.get("height", 1)]
+        chosen   = (
+            max(portrait, key=lambda f: f.get("width", 0))
+            if portrait
+            else max(files, key=lambda f: f.get("width", 0))
+        )
+
+        video_url = chosen.get("link", "")
+        if not video_url:
+            log.warning("No valid video URL — using gradient fallback")
+            return None
+
+        dest = TEMP_DIR / f"pexels_{video_id}_{int(time.time())}.mp4"
+        log.info(f"Downloading Pexels video {video_id}...")
+        dl = requests.get(video_url, timeout=60, stream=True)
+        dl.raise_for_status()
+        with open(dest, "wb") as fh:
+            for chunk in dl.iter_content(chunk_size=1024 * 256):
+                fh.write(chunk)
+
+        log.info(f"Downloaded: {dest.name} ({dest.stat().st_size // 1024} KB)")
+        return dest
+
+    except Exception as exc:
+        log.warning(f"Pexels fetch failed: {exc} — using gradient fallback")
+        return None
+
+
+# ── Background helpers ────────────────────────────────────────
 
 def _make_gradient(theme: dict) -> Image.Image:
-    """Create a cinematic dark gradient background."""
+    """Fallback cinematic dark gradient."""
     img  = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT))
     draw = ImageDraw.Draw(img)
     top, bot = theme["bg_top"], theme["bg_bottom"]
@@ -88,10 +185,38 @@ def _make_gradient(theme: dict) -> Image.Image:
     return img
 
 
-# ── Text helpers ──────────────────────────────────────────────
+def _make_video_background_clip(video_path: Path, duration: float,
+                                 out_path: Path) -> Path:
+    """
+    Crop Pexels video to 9:16, scale to 1080×1920,
+    darken by 55% so text is readable, trim to duration.
+    """
+    _check_ffmpeg()
+    vf = (
+        f"crop=ih*9/16:ih,"
+        f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+        f"setsar=1,"
+        f"colorchannelmixer=rr=0.45:gg=0.45:bb=0.45"
+    )
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_path),
+        "-vf", vf,
+        "-t", str(duration),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p", "-r", str(VIDEO_FPS),
+        "-an",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg background error:\n{result.stderr[-600:]}")
+    return out_path
+
+
+# ── Text overlay ──────────────────────────────────────────────
 
 def _wrap(text: str, font, max_px: int, draw: ImageDraw.Draw) -> list[str]:
-    """Word-wrap text to fit within max_px width."""
     words, lines, current = text.split(), [], []
     for word in words:
         test_line = " ".join(current + [word])
@@ -107,76 +232,105 @@ def _wrap(text: str, font, max_px: int, draw: ImageDraw.Draw) -> list[str]:
     return lines
 
 
-def _draw_glow(draw: ImageDraw.Draw, text: str, x: int, y: int,
-               font, glow_color: tuple, radius: int = 18):
+def _make_text_overlay(content_data: dict) -> Path:
     """
-    Draw a soft cinematic glow behind text.
-    Uses RGBA image compositing so the glow is genuinely semi-transparent —
-    no hard rectangular highlight boxes.
+    Render text as transparent RGBA PNG.
+    Composited on top of the Pexels video via FFmpeg overlay filter.
     """
-    # Build glow on a separate RGBA layer, then composite onto the main image
-    glow_layer = Image.new("RGBA", (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0, 0))
-    glow_draw  = ImageDraw.Draw(glow_layer)
+    mood    = content_data.get("mood", "dark_truth")
+    content = content_data["content"]
+    theme   = VISUAL_THEMES.get(mood, VISUAL_THEMES["dark_truth"])
 
-    for r in range(radius, 0, -3):
-        alpha = int(80 * (1 - r / radius))   # fade out as radius grows
-        color = (*glow_color, alpha)
-        for dx in range(-r, r + 1, max(1, r // 3)):
-            for dy in range(-r, r + 1, max(1, r // 3)):
-                glow_draw.text(
-                    (x + dx, y + dy), text,
-                    font=font, anchor="mm", fill=color,
-                )
+    img    = Image.new("RGBA", (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0, 0))
+    draw   = ImageDraw.Draw(img)
+    cx     = VIDEO_WIDTH // 2
+    accent = theme["accent_color"]
 
-    # Composite glow onto the existing draw context's image
-    base = draw._image  # access underlying image
-    base.paste(
-        Image.alpha_composite(base.convert("RGBA"), glow_layer).convert("RGB"),
-        (0, 0),
-    )
+    # Top accent bar
+    draw.rectangle([0, 0, VIDEO_WIDTH, 6], fill=(*accent, 230))
+    draw.rectangle([0, VIDEO_HEIGHT - 6, VIDEO_WIDTH, VIDEO_HEIGHT],
+                   fill=(*accent, 230))
+
+    # Channel watermark strip
+    draw.rectangle([0, 20, VIDEO_WIDTH, 100], fill=(0, 0, 0, 170))
+    draw.text((cx, 60), "BillionAire's _Thoughts",
+              font=_font(36, bold=False), anchor="mm",
+              fill=(*accent, 240))
+
+    # Mood label strip
+    draw.rectangle([0, 100, VIDEO_WIDTH, 148], fill=(0, 0, 0, 140))
+    draw.text((cx, 124), theme["label"],
+              font=_font(30, bold=True), anchor="mm",
+              fill=(*accent, 230))
+
+    draw.line([(60, 153), (VIDEO_WIDTH - 60, 153)],
+              fill=(*accent, 180), width=2)
+
+    # Main content text
+    content_font = _font(72, bold=True)
+    padding_x    = 70
+    max_px       = VIDEO_WIDTH - padding_x * 2
+    lines        = _wrap(content, content_font, max_px, draw)
+    line_h       = 108
+    block_h      = len(lines) * line_h
+    start_y      = int(VIDEO_HEIGHT * 0.30)
+
+    for i, line in enumerate(lines):
+        y    = start_y + i * line_h
+        bbox = draw.textbbox((cx, y), line, font=content_font, anchor="mm")
+
+        # Dark pill behind text for readability on any background
+        draw.rectangle(
+            [bbox[0] - 16, bbox[1] - 8, bbox[2] + 16, bbox[3] + 8],
+            fill=(0, 0, 0, 175),
+        )
+        # Shadow
+        for dx, dy in [(-2, 2), (2, 2), (-2, -2), (2, -2)]:
+            draw.text((cx + dx, y + dy), line,
+                      font=content_font, anchor="mm", fill=(0, 0, 0, 200))
+        # Main text — always white for maximum contrast
+        draw.text((cx, y), line,
+                  font=content_font, anchor="mm", fill=(255, 255, 255, 255))
+
+    # Divider
+    sep_y = start_y + block_h + 40
+    draw.line([(60, sep_y), (VIDEO_WIDTH - 60, sep_y)],
+              fill=(*accent, 180), width=2)
+
+    # Bottom CTA
+    draw.rectangle([0, VIDEO_HEIGHT - 165, VIDEO_WIDTH, VIDEO_HEIGHT - 95],
+                   fill=(0, 0, 0, 160))
+    draw.text((cx, VIDEO_HEIGHT - 130),
+              "Follow for daily hard truths",
+              font=_font(38, bold=False), anchor="mm",
+              fill=(220, 220, 220, 235))
+
+    path = TEMP_DIR / "overlay_main.png"
+    img.save(str(path), "PNG")
+    return path
 
 
-def _draw_text_safe(draw: ImageDraw.Draw, pos: tuple, text: str,
-                    font, fill: tuple, anchor: str = "mm"):
-    """Draw text — strips emoji if emoji font not available to avoid crashes."""
-    try:
-        draw.text(pos, text, font=font, anchor=anchor, fill=fill)
-    except Exception:
-        # Strip non-ASCII as fallback
-        safe = text.encode("ascii", "ignore").decode("ascii").strip()
-        draw.text(pos, safe, font=font, anchor=anchor, fill=fill)
-
-
-# ── Frame creators ────────────────────────────────────────────
+# ── Frame creators (intro/outro — static gradient) ────────────
 
 def _intro_frame() -> Path:
-    """2-second branded intro — gold branding on black."""
     img  = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0))
     draw = ImageDraw.Draw(img)
-
-    # Subtle dark gold gradient
     for y in range(VIDEO_HEIGHT):
         t = y / VIDEO_HEIGHT
-        r = int(22 * (1 - t))
-        g = int(16 * (1 - t))
-        draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, 0))
+        draw.line([(0, y), (VIDEO_WIDTH, y)],
+                  fill=(int(22 * (1 - t)), int(16 * (1 - t)), 0))
 
-    cx   = VIDEO_WIDTH  // 2
-    cy   = VIDEO_HEIGHT // 2
-    gold = (255, 210, 0)
-
-    # Gold accent lines
+    cx, cy = VIDEO_WIDTH // 2, VIDEO_HEIGHT // 2
+    gold   = (255, 210, 0)
     draw.line([(80, cy - 140), (VIDEO_WIDTH - 80, cy - 140)], fill=gold, width=3)
     draw.line([(80, cy + 140), (VIDEO_WIDTH - 80, cy + 140)], fill=gold, width=3)
 
-    # Money bag emoji
     try:
         draw.text((cx, cy - 190), "💰", font=_emoji_font(120),
                   anchor="mm", fill=gold)
     except Exception:
         draw.text((cx, cy - 190), "$", font=_font(110), anchor="mm", fill=gold)
 
-    # Channel name
     draw.text((cx, cy - 20), "BillionAire's",
               font=_font(82, bold=True), anchor="mm", fill=gold)
     draw.text((cx, cy + 80), "_Thoughts",
@@ -187,99 +341,16 @@ def _intro_frame() -> Path:
     return path
 
 
-def _main_frame(content_data: dict) -> Path:
-    """
-    22-second main content frame.
-    Text block is positioned in the upper-centre third of the screen —
-    leaving the bottom third clear for YouTube's UI (like/comment/share buttons).
-    """
-    mood    = content_data.get("mood", "wealth_fact")
-    content = content_data["content"]
-    theme   = VISUAL_THEMES.get(mood, VISUAL_THEMES["wealth_fact"])
-
-    img  = _make_gradient(theme)
-    draw = ImageDraw.Draw(img)
-
-    cx      = VIDEO_WIDTH  // 2
-    accent  = theme["accent_color"]
-    txt_col = theme["text_color"]
-    glow    = theme["glow_color"]
-
-    # Top + bottom accent bars
-    draw.rectangle([0, 0, VIDEO_WIDTH, 8], fill=accent)
-    draw.rectangle([0, VIDEO_HEIGHT - 8, VIDEO_WIDTH, VIDEO_HEIGHT], fill=accent)
-
-    # Channel watermark — top
-    draw.text((cx, 60), f"BillionAire's _Thoughts",
-              font=_font(38, bold=False), anchor="mm", fill=accent)
-
-    # Mood label
-    draw.text((cx, 120), theme["label"],
-              font=_font(32, bold=True), anchor="mm", fill=accent)
-
-    # Decorative top divider
-    draw.line([(60, 155), (VIDEO_WIDTH - 60, 155)], fill=accent, width=2)
-
-    # ── Main content text ──────────────────────────────────────
-    # Positioned starting at 30% from top — leaves bottom 35% for YouTube UI
-    content_font = _font(72, bold=True)
-    padding_x    = 70
-    max_px       = VIDEO_WIDTH - padding_x * 2
-    lines        = _wrap(content, content_font, max_px, draw)
-    line_h       = 105
-    block_h      = len(lines) * line_h
-
-    # Start at 30% from top, not dead centre — avoids YouTube button overlap
-    start_y = int(VIDEO_HEIGHT * 0.30)
-
-    for i, line in enumerate(lines):
-        y = start_y + i * line_h
-
-        # Soft glow layer
-        for offset in [(-3, -3), (3, -3), (-3, 3), (3, 3), (0, -4), (0, 4)]:
-            draw.text(
-                (cx + offset[0], y + offset[1]), line,
-                font=content_font, anchor="mm",
-                fill=(*glow, 160) if len(glow) == 3 else glow,
-            )
-
-        # Main text
-        draw.text((cx, y), line,
-                  font=content_font, anchor="mm", fill=txt_col)
-
-    # Divider below text
-    sep_y = start_y + block_h + 45
-    draw.line([(60, sep_y), (VIDEO_WIDTH - 60, sep_y)], fill=accent, width=2)
-
-    # Bottom CTA — fixed at bottom, above YouTube UI zone
-    draw.text((cx, VIDEO_HEIGHT - 130),
-              "Follow for daily wealth secrets",
-              font=_font(40, bold=False), anchor="mm", fill=(160, 160, 160))
-    try:
-        draw.text((cx + 310, VIDEO_HEIGHT - 130), "💰",
-                  font=_emoji_font(42), anchor="mm", fill=accent)
-    except Exception:
-        pass
-
-    path = TEMP_DIR / "frame_main.png"
-    img.save(str(path), "PNG")
-    return path
-
-
 def _outro_frame() -> Path:
-    """3-second outro — follow CTA."""
     img  = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), (0, 0, 0))
     draw = ImageDraw.Draw(img)
-
     for y in range(VIDEO_HEIGHT):
         t = y / VIDEO_HEIGHT
-        r = int(22 * (1 - t))
-        g = int(16 * (1 - t))
-        draw.line([(0, y), (VIDEO_WIDTH, y)], fill=(r, g, 0))
+        draw.line([(0, y), (VIDEO_WIDTH, y)],
+                  fill=(int(22 * (1 - t)), int(16 * (1 - t)), 0))
 
-    cx   = VIDEO_WIDTH  // 2
-    cy   = VIDEO_HEIGHT // 2
-    gold = (255, 210, 0)
+    cx, cy = VIDEO_WIDTH // 2, VIDEO_HEIGHT // 2
+    gold   = (255, 210, 0)
 
     draw.text((cx, cy - 180), "Follow for more",
               font=_font(68, bold=True), anchor="mm", fill=(255, 255, 255))
@@ -287,8 +358,7 @@ def _outro_frame() -> Path:
         draw.text((cx, cy - 40), "💰",
                   font=_emoji_font(130), anchor="mm", fill=gold)
     except Exception:
-        draw.text((cx, cy - 40), "$",
-                  font=_font(110), anchor="mm", fill=gold)
+        draw.text((cx, cy - 40), "$", font=_font(110), anchor="mm", fill=gold)
 
     draw.text((cx, cy + 110), CHANNEL_NAME,
               font=_font(58, bold=True), anchor="mm", fill=gold)
@@ -306,60 +376,56 @@ def _check_ffmpeg():
     if not shutil.which("ffmpeg"):
         raise EnvironmentError(
             "FFmpeg not found!\n"
-            "GitHub Actions: add this to upload.yml:\n"
-            "  - run: sudo apt-get install -y ffmpeg\n"
-            "Windows: winget install ffmpeg"
+            "GitHub Actions: add to upload.yml:\n"
+            "  - run: sudo apt-get install -y ffmpeg"
         )
 
 
-def _image_to_clip(img_path: Path, duration: float, out_path: Path,
-                   zoom: bool = False) -> Path:
-    """
-    Convert a PNG image into a video clip.
-    Zoom uses a lightweight scale-first approach to avoid memory issues
-    on GitHub Actions free tier.
-    """
+def _image_to_clip(img_path: Path, duration: float, out_path: Path) -> Path:
+    """Convert static PNG to video clip."""
     _check_ffmpeg()
-
-    if zoom:
-        # Scale to full res FIRST, then apply gentle zoom — much lighter on RAM
-        vf = (
-            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
-            f"zoompan=z='min(zoom+0.0005,1.12)':d=1:"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:fps={VIDEO_FPS},"
-            f"setsar=1"
-        )
-    else:
-        vf = f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1"
-
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1",
-        "-i", str(img_path),
-        "-vf", vf,
+        "-loop", "1", "-i", str(img_path),
+        "-vf", f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT},setsar=1",
         "-t", str(duration),
-        "-c:v", "libx264",
-        "-preset", "fast",       # faster encoding, same quality
-        "-crf", "23",             # quality level (18=best, 28=worst, 23=default)
-        "-pix_fmt", "yuv420p",
-        "-r", str(VIDEO_FPS),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p", "-r", str(VIDEO_FPS),
         str(out_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg clip error:\n{result.stderr[-800:]}")
+        raise RuntimeError(f"FFmpeg image clip error:\n{result.stderr[-600:]}")
+    return out_path
+
+
+def _overlay_text_on_video(video_clip: Path, overlay_png: Path,
+                            out_path: Path) -> Path:
+    """Composite transparent text overlay PNG on top of video clip."""
+    _check_ffmpeg()
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(video_clip),
+        "-i", str(overlay_png),
+        "-filter_complex", "[0:v][1:v]overlay=0:0[v]",
+        "-map", "[v]",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p", "-r", str(VIDEO_FPS),
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if result.returncode != 0:
+        raise RuntimeError(f"FFmpeg overlay error:\n{result.stderr[-600:]}")
     return out_path
 
 
 def _pick_music() -> Path:
-    """Return least-recently-used music track from music/ folder."""
     exts   = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
     tracks = [p for p in MUSIC_DIR.iterdir() if p.suffix.lower() in exts]
     if not tracks:
         raise FileNotFoundError(
-            f"No music files found in {MUSIC_DIR}/\n"
-            "Add MP3 files to the music/ folder and commit them to GitHub."
+            f"No music in {MUSIC_DIR}/\n"
+            "Add MP3 files to music/ and commit to GitHub."
         )
     return min(tracks, key=lambda p: p.stat().st_atime)
 
@@ -368,71 +434,100 @@ def _pick_music() -> Path:
 
 def create_video(content_data: dict) -> Path:
     """
-    Assemble the complete video:
-      Intro (2s) + Main (22s) + Outro (3s) + trap music
-    Returns Path to the final MP4.
+    Full pipeline:
+      Intro (2s gradient) +
+      Main (22s Pexels video + text overlay) +
+      Outro (3s gradient) +
+      Trap music
+    Falls back to gradient if Pexels unavailable.
     """
     _check_ffmpeg()
-    ts = int(time.time())
-    log.info("Creating video frames...")
+    ts   = int(time.time())
+    mood = content_data.get("mood", "dark_truth")
+    log.info(f"Creating video — mood: {mood}")
 
-    intro_png = _intro_frame()
-    main_png  = _main_frame(content_data)
-    outro_png = _outro_frame()
+    pexels_raw  = None
+    bg_clip     = TEMP_DIR / f"bg_clip_{ts}.mp4"
+    main_mp4    = TEMP_DIR / f"clip_main_{ts}.mp4"
+    intro_mp4   = TEMP_DIR / f"clip_intro_{ts}.mp4"
+    outro_mp4   = TEMP_DIR / f"clip_outro_{ts}.mp4"
+    concat_mp4  = TEMP_DIR / f"concat_{ts}.mp4"
+    concat_txt  = TEMP_DIR / f"concat_{ts}.txt"
+    final_mp4   = TEMP_DIR / f"video_{ts}.mp4"
+    combined_p  = TEMP_DIR / f"combined_{ts}.png"
 
-    log.info("Rendering clips...")
-    intro_mp4  = TEMP_DIR / f"clip_intro_{ts}.mp4"
-    main_mp4   = TEMP_DIR / f"clip_main_{ts}.mp4"
-    outro_mp4  = TEMP_DIR / f"clip_outro_{ts}.mp4"
-    concat_mp4 = TEMP_DIR / f"concat_{ts}.mp4"
-    concat_txt = TEMP_DIR / f"concat_{ts}.txt"
-    final_mp4  = TEMP_DIR / f"video_{ts}.mp4"
+    try:
+        # 1. Render static frames
+        intro_png   = _intro_frame()
+        outro_png   = _outro_frame()
+        overlay_png = _make_text_overlay(content_data)
 
-    _image_to_clip(intro_png, float(INTRO_DURATION_SECONDS), intro_mp4, zoom=False)
-    _image_to_clip(main_png,  float(MAIN_DURATION_SECONDS),  main_mp4,  zoom=True)
-    _image_to_clip(outro_png, float(OUTRO_DURATION_SECONDS), outro_mp4, zoom=False)
+        # 2. Fetch Pexels background
+        pexels_raw = _fetch_pexels_video(mood)
 
-    log.info("Concatenating clips...")
-    concat_txt.write_text(
-        f"file '{intro_mp4.resolve()}'\n"
-        f"file '{main_mp4.resolve()}'\n"
-        f"file '{outro_mp4.resolve()}'\n"
-    )
-    result = subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-        "-i", str(concat_txt), "-c", "copy", str(concat_mp4),
-    ], capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg concat error:\n{result.stderr[-600:]}")
+        if pexels_raw and pexels_raw.exists():
+            _make_video_background_clip(
+                pexels_raw, float(MAIN_DURATION_SECONDS), bg_clip
+            )
+            _overlay_text_on_video(bg_clip, overlay_png, main_mp4)
+        else:
+            # Gradient fallback
+            theme    = VISUAL_THEMES.get(mood, VISUAL_THEMES["dark_truth"])
+            grad_img = _make_gradient(theme)
+            overlay  = Image.open(str(overlay_png)).convert("RGBA")
+            combined = Image.alpha_composite(
+                grad_img.convert("RGBA"), overlay
+            ).convert("RGB")
+            combined.save(str(combined_p), "PNG")
+            _image_to_clip(combined_p, float(MAIN_DURATION_SECONDS), main_mp4)
 
-    log.info("Adding music...")
-    music      = _pick_music()
-    total_dur  = INTRO_DURATION_SECONDS + MAIN_DURATION_SECONDS + OUTRO_DURATION_SECONDS
-    fade_start = total_dur - 2
+        # 3. Intro + outro clips
+        _image_to_clip(intro_png, float(INTRO_DURATION_SECONDS), intro_mp4)
+        _image_to_clip(outro_png, float(OUTRO_DURATION_SECONDS), outro_mp4)
 
-    result = subprocess.run([
-        "ffmpeg", "-y",
-        "-i", str(concat_mp4),
-        "-stream_loop", "-1",
-        "-i", str(music),
-        "-map", "0:v",
-        "-map", "1:a",
-        "-c:v", "copy",
-        "-c:a", "aac", "-b:a", "192k",
-        "-af", f"volume=0.3,afade=t=out:st={fade_start}:d=2",
-        "-t", str(total_dur),
-        str(final_mp4),
-    ], capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg music error:\n{result.stderr[-600:]}")
+        # 4. Concatenate
+        concat_txt.write_text(
+            f"file '{intro_mp4.resolve()}'\n"
+            f"file '{main_mp4.resolve()}'\n"
+            f"file '{outro_mp4.resolve()}'\n"
+        )
+        result = subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_txt), "-c", "copy", str(concat_mp4),
+        ], capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"Concat error:\n{result.stderr[-600:]}")
 
-    for f in [intro_png, main_png, outro_png,
-              intro_mp4, main_mp4, outro_mp4,
-              concat_mp4, concat_txt]:
-        try:
-            f.unlink(missing_ok=True)
-        except Exception:
-            pass
+        # 5. Add music
+        music      = _pick_music()
+        total_dur  = INTRO_DURATION_SECONDS + MAIN_DURATION_SECONDS + OUTRO_DURATION_SECONDS
+        fade_start = total_dur - 2
 
-    log.info(f"Video ready: {final_mp4.name}")
-    return final_mp4
+        result = subprocess.run([
+            "ffmpeg", "-y",
+            "-i", str(concat_mp4),
+            "-stream_loop", "-1", "-i", str(music),
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-af", f"volume=0.3,afade=t=out:st={fade_start}:d=2",
+            "-t", str(total_dur),
+            str(final_mp4),
+        ], capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(f"Music error:\n{result.stderr[-600:]}")
+
+        log.info(f"Video ready: {final_mp4.name}")
+        return final_mp4
+
+    finally:
+        for f in [bg_clip, main_mp4, intro_mp4, outro_mp4,
+                  concat_mp4, concat_txt, combined_p]:
+            try:
+                Path(f).unlink(missing_ok=True)
+            except Exception:
+                pass
+        if pexels_raw:
+            try:
+                pexels_raw.unlink(missing_ok=True)
+            except Exception:
+                pass
