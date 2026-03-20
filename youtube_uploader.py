@@ -1,14 +1,6 @@
 # youtube_uploader.py
 # ============================================================
 # Uploads video to YouTube using OAuth2 (Data API v3)
-#
-# How the token works:
-#   - You run setup_auth.py ONCE on your Windows PC
-#   - It opens a browser, you log in, it saves youtube_token.json
-#   - You copy that file's contents into a GitHub Secret
-#   - GitHub Actions decodes it and places it as youtube_token.json
-#   - The refresh_token inside it lasts forever (until you revoke it)
-#   - This file auto-refreshes the access_token every hour
 # ============================================================
 
 import json
@@ -21,16 +13,17 @@ from tenacity import (
 )
 
 from config import (
-    CHANNEL_EMOJI, CHANNEL_NAME, YOUTUBE_CATEGORY_ID, YOUTUBE_CLIENT_SECRET,
-    YOUTUBE_DESCRIPTION_TEMPLATE, YOUTUBE_HASHTAGS, YOUTUBE_LANGUAGE,
-    YOUTUBE_PRIVACY, YOUTUBE_TAGS, YOUTUBE_TOKEN_FILE,
+    CHANNEL_EMOJI, CHANNEL_NAME, DESCRIPTION_CTA,
+    YOUTUBE_CATEGORY_ID, YOUTUBE_CLIENT_SECRET,
+    YOUTUBE_DESCRIPTION_TEMPLATE, YOUTUBE_HASHTAGS,
+    YOUTUBE_LANGUAGE, YOUTUBE_PRIVACY,
+    YOUTUBE_TAGS, YOUTUBE_TOKEN_FILE,
 )
 
 log = logging.getLogger("YouTubeUploader")
 
 
 def _is_retryable(exc: Exception) -> bool:
-    """Return True for transient errors worth retrying."""
     try:
         from googleapiclient.errors import HttpError
         if isinstance(exc, HttpError):
@@ -42,18 +35,14 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _build_client():
-    """Build an authenticated YouTube API client from the saved token."""
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
     if not YOUTUBE_TOKEN_FILE.exists():
         raise FileNotFoundError(
-            f"youtube_token.json not found at {YOUTUBE_TOKEN_FILE}\n"
-            "Fix:\n"
-            "  1. Run setup_auth.py on your Windows PC\n"
-            "  2. Copy the base64 output into GitHub Secret YOUTUBE_TOKEN_JSON\n"
-            "  See SETUP_GUIDE.md for full instructions."
+            f"youtube_token.json not found.\n"
+            "Run setup_auth.py → update YOUTUBE_TOKEN_JSON in GitHub Secrets."
         )
 
     raw   = json.loads(YOUTUBE_TOKEN_FILE.read_text(encoding="utf-8"))
@@ -65,11 +54,8 @@ def _build_client():
         client_secret = raw.get("client_secret"),
         scopes        = raw.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
     )
-
-    # Auto-refresh access token if expired
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
-
     return build("youtube", "v3", credentials=creds)
 
 
@@ -81,24 +67,23 @@ def _build_client():
     before_sleep=before_sleep_log(log, logging.WARNING),
 )
 def upload_to_youtube(video_path: Path, content_data: dict) -> str:
-    """
-    Upload video to YouTube.
-    Returns the YouTube video ID.
-    """
+    """Upload video to YouTube. Returns the video ID."""
     from googleapiclient.http import MediaFileUpload
 
     youtube = _build_client()
 
-    title = content_data.get("title", f"Hard Truth 😎 | {CHANNEL_NAME}")[:100]
-
-    # Build hashtags string — joins list into spaced hashtags
+    title        = content_data.get("title", f"Hard Truth 😎 | {CHANNEL_NAME}")[:100]
     hashtags_str = " ".join(YOUTUBE_HASHTAGS)
 
+    # Use hook as the on-screen text and answer as the description content
+    screen_text  = content_data.get("hook", content_data.get("content", ""))
+
     description = YOUTUBE_DESCRIPTION_TEMPLATE.format(
-        content  = content_data.get("content", ""),
-        channel  = CHANNEL_NAME,
-        emoji    = CHANNEL_EMOJI,
-        hashtags = hashtags_str,
+        content       = screen_text,
+        description_cta = DESCRIPTION_CTA,
+        channel       = CHANNEL_NAME,
+        emoji         = CHANNEL_EMOJI,
+        hashtags      = hashtags_str,
     )
 
     body = {
@@ -122,16 +107,15 @@ def upload_to_youtube(video_path: Path, content_data: dict) -> str:
         chunksize = 1024 * 1024,
     )
 
-    log.info(f"Uploading to YouTube: {title[:60]}...")
+    log.info(f"Uploading: {title[:60]}...")
     request  = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None
 
     while response is None:
         status, response = request.next_chunk()
         if status:
-            pct = int(status.progress() * 100)
-            log.info(f"  Upload progress: {pct}%")
+            log.info(f"  Upload progress: {int(status.progress() * 100)}%")
 
     video_id = response["id"]
-    log.info(f"YouTube upload done → https://youtube.com/shorts/{video_id}")
+    log.info(f"Uploaded → https://youtube.com/shorts/{video_id}")
     return video_id
