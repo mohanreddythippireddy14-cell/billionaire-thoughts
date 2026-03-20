@@ -22,8 +22,8 @@ from tenacity import (
 
 from config import (
     CHANNEL_EMOJI, CHANNEL_NAME, YOUTUBE_CATEGORY_ID, YOUTUBE_CLIENT_SECRET,
-    YOUTUBE_DESCRIPTION_TEMPLATE, YOUTUBE_LANGUAGE, YOUTUBE_PRIVACY,
-    YOUTUBE_TAGS, YOUTUBE_TOKEN_FILE,
+    YOUTUBE_DESCRIPTION_TEMPLATE, YOUTUBE_HASHTAGS, YOUTUBE_LANGUAGE,
+    YOUTUBE_PRIVACY, YOUTUBE_TAGS, YOUTUBE_TOKEN_FILE,
 )
 
 log = logging.getLogger("YouTubeUploader")
@@ -53,17 +53,17 @@ def _build_client():
             "Fix:\n"
             "  1. Run setup_auth.py on your Windows PC\n"
             "  2. Copy the base64 output into GitHub Secret YOUTUBE_TOKEN_JSON\n"
-            "  See SETUP_GUIDE.md → Step 3 for full instructions."
+            "  See SETUP_GUIDE.md for full instructions."
         )
 
-    raw  = json.loads(YOUTUBE_TOKEN_FILE.read_text(encoding="utf-8"))
+    raw   = json.loads(YOUTUBE_TOKEN_FILE.read_text(encoding="utf-8"))
     creds = Credentials(
-        token          = raw.get("token"),
-        refresh_token  = raw.get("refresh_token"),
-        token_uri      = raw.get("token_uri", "https://oauth2.googleapis.com/token"),
-        client_id      = raw.get("client_id"),
-        client_secret  = raw.get("client_secret"),
-        scopes         = raw.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
+        token         = raw.get("token"),
+        refresh_token = raw.get("refresh_token"),
+        token_uri     = raw.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id     = raw.get("client_id"),
+        client_secret = raw.get("client_secret"),
+        scopes        = raw.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
     )
 
     # Auto-refresh access token if expired
@@ -83,18 +83,22 @@ def _build_client():
 def upload_to_youtube(video_path: Path, content_data: dict) -> str:
     """
     Upload video to YouTube.
-    Returns the YouTube video ID (e.g. 'dQw4w9WgXcQ').
+    Returns the YouTube video ID.
     """
     from googleapiclient.http import MediaFileUpload
 
     youtube = _build_client()
 
-    title = content_data.get("title", f"Wealth Secret 💰 | {CHANNEL_NAME}")[:100]
+    title = content_data.get("title", f"Hard Truth 😎 | {CHANNEL_NAME}")[:100]
+
+    # Build hashtags string — joins list into spaced hashtags
+    hashtags_str = " ".join(YOUTUBE_HASHTAGS)
 
     description = YOUTUBE_DESCRIPTION_TEMPLATE.format(
-        content=content_data.get("content", ""),
-        channel=CHANNEL_NAME,
-        emoji=CHANNEL_EMOJI,
+        content  = content_data.get("content", ""),
+        channel  = CHANNEL_NAME,
+        emoji    = CHANNEL_EMOJI,
+        hashtags = hashtags_str,
     )
 
     body = {
@@ -106,16 +110,16 @@ def upload_to_youtube(video_path: Path, content_data: dict) -> str:
             "defaultLanguage": YOUTUBE_LANGUAGE,
         },
         "status": {
-            "privacyStatus":            YOUTUBE_PRIVACY,
-            "selfDeclaredMadeForKids":  False,
+            "privacyStatus":           YOUTUBE_PRIVACY,
+            "selfDeclaredMadeForKids": False,
         },
     }
 
     media = MediaFileUpload(
         str(video_path),
-        mimetype="video/mp4",
-        resumable=True,
-        chunksize=1024 * 1024,   # 1 MB chunks
+        mimetype  = "video/mp4",
+        resumable = True,
+        chunksize = 1024 * 1024,
     )
 
     log.info(f"Uploading to YouTube: {title[:60]}...")
@@ -129,5 +133,5 @@ def upload_to_youtube(video_path: Path, content_data: dict) -> str:
             log.info(f"  Upload progress: {pct}%")
 
     video_id = response["id"]
-    log.info(f"YouTube upload done → https://youtube.com/watch?v={video_id}")
+    log.info(f"YouTube upload done → https://youtube.com/shorts/{video_id}")
     return video_id
