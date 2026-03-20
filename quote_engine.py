@@ -145,10 +145,13 @@ RULES:
         else:
             raise ValueError(f"Groq returned invalid JSON:\n{raw[:300]}")
 
-    # Validate
-    for field in ["content", "mood", "title", "description"]:
+    for field in ["content", "mood", "title"]:
         if field not in data or not data[field]:
             raise ValueError(f"Groq response missing field: '{field}'")
+
+    # description is optional — use fallback if missing
+    if not data.get("description"):
+        data["description"] = data.get("content", "")
 
     # Sanitize mood
     if data["mood"] not in ["dark_truth", "wealth_fact", "mindset"]:
