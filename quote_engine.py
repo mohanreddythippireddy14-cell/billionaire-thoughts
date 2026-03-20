@@ -155,11 +155,22 @@ Return ONLY valid JSON, no markdown, no code blocks:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        # Find the first complete JSON object only
+        match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw, re.DOTALL)
         if match:
-            data = json.loads(match.group())
+            try:
+                data = json.loads(match.group())
+            except json.JSONDecodeError:
+                # Last resort — find content between first { and last }
+                start = raw.find('{')
+                end   = raw.rfind('}') + 1
+                if start != -1 and end > start:
+                    data = json.loads(raw[start:end])
+                else:
+                    raise ValueError(f"Groq returned invalid JSON:\n{raw[:300]}")
         else:
             raise ValueError(f"Groq returned invalid JSON:\n{raw[:300]}")
+
 
     # Validate required fields
     for field in ["hook", "answer", "comment_question", "mood", "title"]:
