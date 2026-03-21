@@ -408,7 +408,7 @@ def _pick_music() -> Path:
     tracks = [p for p in MUSIC_DIR.iterdir() if p.suffix.lower() in exts]
     if not tracks:
         raise FileNotFoundError(f"No music in {MUSIC_DIR}/")
-    return min(tracks, key=lambda p: p.stat().st_atime)
+    return random.choice(tracks)
 
 
 # ── Main entry point ──────────────────────────────────────────
