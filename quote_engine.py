@@ -7,6 +7,7 @@
 #   - Post-generation validation strips any percentage numbers
 #   - 6 viral quote structures in rotation
 #   - Audience-aware prompts per TARGET_AUDIENCE
+#   - Natural phrase boundaries enforced with good/bad examples
 # ============================================================
 
 import datetime
@@ -66,13 +67,12 @@ QUOTE_STRUCTURES = [
     },
     {
         "name": "NEVER_DO",
-        "desc": "Things a real man never does. 4 short phrases each starting action.",
-        "example": '"NEVER RUN FOR" / "A PERSON WHO" / "NEVER WAITED" / "FOR YOU"',
+        "desc": "Things a real man never does. 4 short phrases each a complete thought.",
+        "example": '"NEVER CHASE PEOPLE" / "WHO WALK AWAY" / "LET THEM GO" / "AND RISE ALONE"',
         "mood": "attitude",
     },
 ]
 
-# ── Banned phrases and patterns ───────────────────────────────
 BANNED_WORDS = [
     "never give up", "keep going", "believe in yourself",
     "work hard", "hustle", "grind", "stay positive",
@@ -80,7 +80,6 @@ BANNED_WORDS = [
     "rise and shine", "be the best",
 ]
 
-# Regex to detect any percentage stat — FIX 3
 STAT_PATTERN = re.compile(r'\b\d+\s*%|\b\d+\s*percent', re.IGNORECASE)
 
 
@@ -132,7 +131,6 @@ def _parse_json(raw: str) -> dict:
 
 
 def _contains_stat(text: str) -> bool:
-    """Return True if text contains any percentage or fake stat."""
     return bool(STAT_PATTERN.search(text))
 
 
@@ -163,14 +161,7 @@ def _pick_theme() -> str:
 
 def generate_content() -> dict:
     """
-    Generate phrase-by-phrase quote.
-
-    Returns dict with:
-      phrases   — list of {text, highlight} dicts (3-5 items)
-      mood      — attitude | dark_truth | mindset
-      structure — BUILD_UP | IF_THEN | REFRAME | DARK_TRUTH | ANIMAL_POWER | NEVER_DO
-      title     — YouTube title (50-60 chars, 1 emoji)
-      description, content, hook, answer, audience
+    Generate phrase-by-phrase quote with natural splits.
     """
     theme     = _pick_theme()
     audience  = TARGET_AUDIENCE
@@ -191,20 +182,42 @@ EXAMPLE OF THIS STRUCTURE: {structure['example']}
 WRITE A NEW QUOTE using the {structure['name']} structure about: {theme}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-STRICT RULES — VIOLATIONS WILL BREAK THE PIPELINE:
+THE MOST IMPORTANT RULE — NATURAL PHRASE SPLITTING:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. PHRASES: 3 to 5 phrases. Each phrase = 3 to 6 words MAX.
+Each phrase MUST be a complete grammatical unit that makes
+sense when read alone AND connects naturally to the next phrase.
+
+Think of it like a spoken pause — split where a person
+would naturally pause when reading aloud.
+
+GOOD splits — each phrase is a complete thought or clause:
+  "THE STRONGEST MEN" / "NEVER ANNOUNCE" / "THEIR NEXT MOVE"
+  "IF YOU STAY SILENT" / "WHILE THEY TALK" / "YOU ALREADY WON"
+  "REAL POWER" / "IS NOT GIVEN" / "IT IS BUILT IN DARKNESS"
+  "A LION DOES NOT" / "EXPLAIN ITSELF" / "TO SHEEP"
+
+BAD splits — phrases cut mid-thought and make no sense alone:
+  "THE STRONGEST" / "MEN NEVER" / "ANNOUNCE THEIR" / "NEXT MOVE"
+  "IF YOU STAY" / "SILENT WHILE" / "THEY TALK YOU" / "ALREADY WON"
+  "REAL" / "POWER IS" / "NOT GIVEN IT" / "IS BUILT"
+
+The test: read each phrase alone. Does it make sense?
+If not — you split in the wrong place.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OTHER STRICT RULES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. 3 to 5 phrases total. Each phrase = 3 to 6 words MAX.
 2. ALL CAPS for power words, Mixed Case for softer connectors.
-3. highlight = ONE word per phrase that carries maximum emotional weight.
-4. The last phrase MUST be the hardest hitting — the "wahh" moment.
-5. ABSOLUTELY NO percentages, statistics, or numbers like "97%", "83%", "10x".
-   Using any percentage is an automatic failure. Use words like "most", "few", "many".
-6. FORBIDDEN phrases: never give up, hustle, grind, work hard, believe in yourself.
-7. FORBIDDEN topics: girls, women, relationships — keep it about self-improvement only.
+3. highlight = the ONE word in that phrase with most emotional weight.
+4. Last phrase = hardest hitting — the "wahh" moment.
+5. NO percentages or statistics. Use "most", "few", "many" instead.
+6. FORBIDDEN: never give up, hustle, grind, work hard, believe in yourself.
+7. FORBIDDEN topics: relationships — self-improvement only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY valid JSON — zero text before or after it:
+Return ONLY valid JSON — zero text before or after:
 {{
   "phrases": [
     {{"text": "PHRASE ONE", "highlight": "ONEWORD"}},
@@ -217,64 +230,48 @@ Return ONLY valid JSON — zero text before or after it:
   "description": "Two sentences about the quote. No hashtags. No percentages."
 }}"""
 
-    # Retry up to 3 times to get clean content
     data = None
     for attempt in range(3):
         raw  = _call_groq(prompt, temperature=0.90 + attempt * 0.03)
         data = _parse_json(raw)
 
-        # Check for stats in all phrases
-        has_stat = any(
-            _contains_stat(p.get("text", ""))
-            for p in data.get("phrases", [])
-        )
-        has_banned = any(
-            _contains_banned(p.get("text", ""))
-            for p in data.get("phrases", [])
-        )
+        has_stat   = any(_contains_stat(p.get("text", ""))   for p in data.get("phrases", []))
+        has_banned = any(_contains_banned(p.get("text", "")) for p in data.get("phrases", []))
 
         if not has_stat and not has_banned:
             break
 
         if has_stat:
-            log.warning(f"Attempt {attempt+1}: fake stat detected — retrying")
+            log.warning(f"Attempt {attempt+1}: fake stat — retrying")
         if has_banned:
-            log.warning(f"Attempt {attempt+1}: banned phrase detected — retrying")
+            log.warning(f"Attempt {attempt+1}: banned phrase — retrying")
 
         if attempt == 2:
-            # Last resort — manually strip any stats from phrases
             for p in data.get("phrases", []):
                 p["text"] = STAT_PATTERN.sub("many", p.get("text", ""))
-            log.warning("Stripped stats from phrases on final attempt")
+            log.warning("Stripped stats on final attempt")
 
-    # Validate required fields
     if not data or "phrases" not in data or len(data.get("phrases", [])) < 2:
         raise ValueError("Not enough phrases generated")
     for field in ["mood", "title"]:
         if field not in data or not str(data[field]).strip():
             raise ValueError(f"Missing field: '{field}'")
 
-    # Sanitize mood
     if data["mood"] not in ["attitude", "dark_truth", "mindset"]:
         data["mood"] = structure.get("mood", "attitude")
 
-    # Clamp phrase count
     data["phrases"] = data["phrases"][:MAX_PHRASES]
 
-    # Clean each phrase
     cleaned = []
     for p in data["phrases"]:
         text      = str(p.get("text", "")).strip()
         highlight = str(p.get("highlight", "")).strip()
         if not text:
             continue
-        # Strip stats one more time
-        text = STAT_PATTERN.sub("many", text)
-        # Trim to 7 words max
+        text  = STAT_PATTERN.sub("many", text)
         words = text.split()
         if len(words) > 7:
             text = " ".join(words[:6])
-        # Ensure highlight is in text
         if not highlight or highlight.upper() not in text.upper():
             highlight = text.split()[-1]
         cleaned.append({"text": text, "highlight": highlight.upper()})
@@ -282,7 +279,6 @@ Return ONLY valid JSON — zero text before or after it:
     if len(cleaned) < 2:
         raise ValueError("Not enough valid phrases after cleaning")
 
-    # Build final content dict
     data["phrases"]     = cleaned
     data["description"] = data.get("description", "") or " ".join(p["text"] for p in cleaned)
     data["content"]     = " ".join(p["text"] for p in cleaned)
