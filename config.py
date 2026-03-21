@@ -1,7 +1,7 @@
 # config.py
 # ============================================================
 # BillionAire's _Thoughts — Central Configuration
-# Last updated: March 2026
+# Updated: March 2026 — 15-second structure
 # ============================================================
 
 import os
@@ -29,31 +29,25 @@ EMAIL_APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "")
 
 # ============================================================
 # AUDIENCE TARGETING
-# Each upload targets a different timezone audience.
-# GitHub Actions passes TARGET_AUDIENCE as env variable.
-#
-# Upload schedule (UTC):
-#   Asia   — 15:30 UTC = 9:00 PM IST
-#   Europe — 22:00 UTC = 3:30 AM IST
-#   US     — 20:00 UTC = 1:30 AM IST
 # ============================================================
 TARGET_AUDIENCE = os.environ.get("TARGET_AUDIENCE", "us")
 
 # ============================================================
-# VIDEO STRUCTURE — 27 seconds, NO intro
+# VIDEO STRUCTURE — 15 seconds total
 #
-#   0:00 - 0:08   Hook          (8s)  — bold text slams in instantly
-#   0:08 - 0:18   Answer       (10s)  — brutal reveal
-#   0:18 - 0:21   Comment bait  (3s)  — thought-provoking question
-#   0:21 - 0:24   Agree/disagree(3s)  — CTA for comments
-#   0:24 - 0:27   Outro         (3s)  — follow CTA
+#   0:00 - 0:05   Hook     (5s)  — stops the scroll
+#   0:05 - 0:12   Answer   (7s)  — revelation, reframes reality
+#   0:12 - 0:15   Outro    (3s)  — follow CTA
+#
+# Why 15s:
+#   - Higher completion rate = algorithm pushes harder
+#   - Forces tighter, more impactful writing
+#   - Viewers re-watch — counts as multiple views
 # ============================================================
-HOOK_DURATION_SECONDS           = 8
-ANSWER_DURATION_SECONDS         = 10
-COMMENT_BAIT_DURATION_SECONDS   = 3
-AGREE_DISAGREE_DURATION_SECONDS = 3
-OUTRO_DURATION_SECONDS          = 3
-MAIN_DURATION_SECONDS           = HOOK_DURATION_SECONDS + ANSWER_DURATION_SECONDS  # 18s
+HOOK_DURATION_SECONDS   = 5
+ANSWER_DURATION_SECONDS = 7
+OUTRO_DURATION_SECONDS  = 3
+MAIN_DURATION_SECONDS   = HOOK_DURATION_SECONDS + ANSWER_DURATION_SECONDS  # 12s
 
 VIDEO_WIDTH   = 1080
 VIDEO_HEIGHT  = 1920
@@ -61,46 +55,43 @@ VIDEO_FPS     = 30
 
 # ============================================================
 # AUDIENCE PROFILES
-# Same niche, different cultural angle per audience
 # ============================================================
 AUDIENCE_PROFILES = {
 
     "us": {
         "name":       "US Audience",
-        "age_group":  "16-30 American males",
+        "age_group":  "16-35 English-speaking males globally",
         "style": (
-            "Aggressive, direct, money-focused, no-excuses tone. "
-            "Use specific stats and numbers. Fear of missing out. "
-            "Self-made mindset. Examples: '97% of men...', "
-            "'by age 30', '$1M difference'."
+            "Raw, direct, no fluff. Speaks to the universal human fear of "
+            "wasting your life, being judged, staying average. "
+            "Short sentences. Punches hard. Feels like a mentor who "
+            "won't lie to you."
         ),
-        "hook_style": "Fear-based — what they will LOSE if they stay soft",
         "themes": [
-            "a cold truth about why 97% of American men will retire broke and regret it",
-            "a brutal fact about why most men in their 20s are wasting their best years",
-            "a hard truth about discipline that separates the top 3% from everyone else",
-            "a dark observation about why men who complain never build real wealth",
-            "a raw truth about silence — why the most successful men say the least",
-            "a cold fact about comfort — how choosing comfort at 25 destroys your 40s",
-            "a brutal truth about why most men quit right before the breakthrough",
-            "a hard reality about time — the most expensive thing men waste in their 20s",
-            "a dark truth about why average men hate watching others succeed",
-            "a cold principle about self-respect — why weak men get walked over their whole life",
-            "a brutal observation about men who talk about their goals but never execute",
-            "a raw truth about ambition — why most men are afraid of their own potential",
-            "a cold hard fact about money — what broke men believe that rich men don't",
-            "a dark truth about loyalty — most men give it to people who would never return it",
-            "a brutal reality about age — why your 20s are your only real window to change",
+            "the uncomfortable truth about why most people never change",
+            "what separates men who build something from men who just dream",
+            "the real reason people stay in situations that are killing them",
+            "what silence and discipline build that loud people never understand",
+            "the truth about why being judged by others means you're doing something right",
+            "what most people get wrong about strength and what it actually looks like",
+            "the painful truth about comfort and what it quietly costs you",
+            "why the men who say the least are usually building the most",
+            "what happens to your life when you stop caring what people think",
+            "the truth about failure that no one tells you until it's too late",
+            "what real confidence looks like versus the fake kind everyone performs",
+            "why people who've been through the most are usually the hardest to break",
+            "the truth about loyalty and who is really in your corner when things go wrong",
+            "what most men will regret at 40 that they're choosing right now",
+            "the quiet difference between men who make it and men who almost made it",
         ],
         "tags": [
-            "motivation", "mindset", "self improvement", "shorts", "viral shorts",
-            "sigma male", "discipline", "alpha mindset", "mental toughness",
-            "hard truth", "men motivation", "self improvement for men",
-            "stop being weak motivation", "brutal truth about life",
-            "warrior mindset motivation", "discipline motivation shorts",
-            "attitude shorts", "mindset motivation 2026",
+            "motivation", "mindset", "attitude", "shorts", "viral shorts",
+            "self improvement", "discipline", "hard truth", "mental strength",
+            "men motivation", "attitude shorts", "mindset motivation",
+            "brutal truth", "silent strength", "warrior mindset",
+            "motivational quotes", "life advice", "success mindset",
         ],
-        "hashtags":        ["#Shorts", "#motivation", "#mindset", "#discipline", "#selfimprovement"],
+        "hashtags":        ["#Shorts", "#motivation", "#mindset", "#attitude", "#hardtruth"],
         "description_cta": "Follow for daily hard truths. New video every night.",
     },
 
@@ -108,37 +99,34 @@ AUDIENCE_PROFILES = {
         "name":       "European Audience",
         "age_group":  "18-34 European males",
         "style": (
-            "Stoic, intellectual, philosophical tone. Cold logic over emotion. "
-            "Reference class systems, societal programming, historical truths. "
-            "Calm but devastating. Examples: 'Society teaches you...', "
-            "'The system is designed to...', 'Men who understand this...'."
+            "Stoic, philosophical, cold logic. Exposes what society "
+            "programs people to believe. Calm but devastating. "
+            "Speaks to the person who thinks deeply but acts slowly."
         ),
-        "hook_style": "Truth-based — exposing what society deliberately hides",
         "themes": [
-            "a stoic truth about how modern society programs men to stay obedient and mediocre",
-            "a philosophical observation about why most men never question the life they were given",
-            "a cold logical truth about discipline that stoic philosophers understood centuries ago",
-            "a dark truth about the class system — why most men work hard but stay poor",
-            "a raw observation about why men who think for themselves are feared by society",
-            "a brutal stoic principle about pain — why avoiding it destroys a man's character",
-            "a cold truth about loyalty — most men give it to people who would never reciprocate",
-            "a philosophical truth about ambition — why society punishes men who want more",
-            "a dark observation about how comfort is the modern man's greatest enemy",
-            "a stoic principle about silence — why the wisest men speak only when necessary",
-            "a cold truth about the education system — what it teaches and what it deliberately hides",
-            "a stoic observation about anger — why men who control it are more dangerous than those who don't",
-            "a philosophical truth about failure — why every stoic treated it as necessary not optional",
-            "a dark observation about social media — how it was designed to keep men distracted and weak",
-            "a brutal stoic principle about expectations — why most men suffer because of what they expect",
+            "what stoicism teaches about pain that modern society refuses to accept",
+            "the uncomfortable truth about how society programs people to stay average",
+            "what the men who built empires understood about silence and patience",
+            "the philosophical truth about why most people suffer unnecessarily",
+            "what happens when a man stops asking for permission to become great",
+            "the cold truth about why comfort is the most dangerous thing in modern life",
+            "what history's most resilient men had in common that no one talks about",
+            "the truth about why men who think for themselves are always misunderstood",
+            "what stoic philosophy says about the opinion of others and why it means nothing",
+            "the brutal reality about time that most men refuse to face until it's gone",
+            "what separates men who endure from men who collapse under pressure",
+            "the philosophical truth about identity and why most people never find theirs",
+            "what the wisest men throughout history understood about staying silent",
+            "why the men who've suffered the most are the ones you should never underestimate",
+            "the cold truth about loyalty that most people learn too late in life",
         ],
         "tags": [
-            "stoicism", "mindset", "self improvement", "shorts", "philosophy",
+            "stoicism", "mindset", "philosophy", "shorts", "self improvement",
             "stoic", "marcus aurelius", "discipline", "mental toughness",
-            "stoic motivation", "stoic wisdom", "men motivation",
-            "how to think clearly", "stoicism for men", "dark truth about life",
-            "philosophical truth", "stoic shorts", "mindset 2026",
+            "stoic motivation", "stoic wisdom", "philosophical truth",
+            "dark truth about life", "stoic shorts", "mindset 2026",
         ],
-        "hashtags":        ["#Shorts", "#stoicism", "#mindset", "#philosophy", "#selfimprovement"],
+        "hashtags":        ["#Shorts", "#stoicism", "#mindset", "#philosophy", "#discipline"],
         "description_cta": "Follow for daily stoic truths. New video every night.",
     },
 
@@ -146,51 +134,46 @@ AUDIENCE_PROFILES = {
         "name":       "Asian Audience",
         "age_group":  "16-30 Asian males — India, Pakistan, SEA, Middle East",
         "style": (
-            "Philosophical, struggle-based, family honour, rising from nothing tone. "
-            "Poetic but punchy. Reference hard work, proving people wrong, "
-            "silent sacrifice, building from zero. Emotional but disciplined. "
-            "Examples: 'The man who came from nothing...', "
-            "'Stay silent, let results speak', 'Your struggle is building you'."
+            "Poetic but direct. Validates struggle and sacrifice. "
+            "Speaks to someone building from zero, proving people wrong, "
+            "working in silence. Emotional but disciplined. Relatable."
         ),
-        "hook_style": "Wisdom-based — truth that validates their struggle and sacrifice",
         "themes": [
-            "a raw truth about why men who come from nothing have an unfair advantage over the privileged",
-            "a powerful principle about silent sacrifice — working in darkness until results speak",
-            "a hard truth about proving people wrong — why actions matter more than words ever will",
-            "a brutal observation about why men who face the most struggle build the strongest character",
-            "a deep truth about loyalty — who truly stands with you when everything in life fails",
-            "a raw principle about staying silent while you build — never announce your next move",
-            "a hard truth about men who were told they would never make it and proved everyone wrong",
-            "a powerful observation about patience — why men who wait and work always outlast the loud",
-            "a dark truth about society judging men by their background and not their potential",
-            "a raw principle about mental strength — how pressure either reveals or builds a man's true self",
-            "a brutal truth about family expectations — the weight that either breaks or motivates a man",
-            "a powerful observation about the men who smile in public and suffer in silence",
-            "a raw truth about respect — it is never given to men who come from nothing, only taken",
-            "a hard truth about sacrifice — what the most successful men gave up that others never will",
-            "a philosophical truth about time — why the man who respects it most always wins in the end",
+            "what the men who came from nothing understand about hunger that privileged men never will",
+            "the truth about why working in silence is more powerful than announcing your goals",
+            "what sacrifice really means and why the people who sacrifice the most say the least",
+            "the hard truth about being underestimated and why it is actually your advantage",
+            "what happens to a man who keeps going when everyone around him has given up",
+            "the truth about proving people wrong — why your results are the only reply that matters",
+            "what silent men are building while loud men are still talking about their plans",
+            "the painful truth about who is really watching you fail and who is really in your corner",
+            "what pressure does to a man who refuses to break — and why it makes him dangerous",
+            "the truth about respect — it is never given to men who come from nothing, only earned",
+            "what the most resilient men in history had that most people today have lost",
+            "the truth about family expectations and the weight that either breaks or builds you",
+            "why the men who struggled the most are the ones the world eventually kneels to",
+            "what happens when a quiet man runs out of patience — and why you should not be there",
+            "the truth about timing — why the men who wait and work always outlast the ones who rush",
         ],
         "tags": [
             "motivation", "attitude", "mindset", "shorts", "viral shorts",
             "attitude status", "self improvement", "discipline",
             "motivational shorts", "men motivation", "attitude quotes",
-            "hard work motivation", "success motivation", "never give up",
-            "attitude shayari", "mindset motivation", "sigma mindset",
-            "attitude motivation shorts", "powerful motivation",
+            "hard work motivation", "never give up", "attitude motivation",
+            "powerful motivation", "mindset motivation", "sigma mindset",
         ],
         "hashtags":        ["#Shorts", "#motivation", "#attitude", "#mindset", "#discipline"],
         "description_cta": "Follow for daily hard truths. New video every night.",
     },
 }
 
-# ── Active profile (set by TARGET_AUDIENCE env var) ───────────
+# ── Active profile ────────────────────────────────────────────
 _ACTIVE             = AUDIENCE_PROFILES.get(TARGET_AUDIENCE, AUDIENCE_PROFILES["us"])
 CONTENT_THEMES      = _ACTIVE["themes"]
 YOUTUBE_TAGS        = _ACTIVE["tags"]
 YOUTUBE_HASHTAGS    = _ACTIVE["hashtags"]
 DESCRIPTION_CTA     = _ACTIVE["description_cta"]
 AUDIENCE_STYLE      = _ACTIVE["style"]
-AUDIENCE_HOOK_STYLE = _ACTIVE["hook_style"]
 AUDIENCE_AGE_GROUP  = _ACTIVE["age_group"]
 
 # ============================================================
@@ -228,9 +211,6 @@ YOUTUBE_CATEGORY_ID  = "26"
 YOUTUBE_LANGUAGE     = "en"
 DAILY_UPLOAD_LIMIT   = 3
 
-# ============================================================
-# YOUTUBE DESCRIPTION TEMPLATE
-# ============================================================
 YOUTUBE_DESCRIPTION_TEMPLATE = """{content}
 
 {description_cta}
