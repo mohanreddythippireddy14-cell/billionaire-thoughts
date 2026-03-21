@@ -1,20 +1,12 @@
 # quote_engine.py
 # ============================================================
-# Generates attitude/motivational content — phrase-by-phrase.
+# Generates phrase-by-phrase attitude/motivational content.
 #
-# Based on real viral pattern analysis:
-#   - Quote split into 3-5 short phrases (3-6 words each)
-#   - Each phrase shown for 2.5 seconds on its own cut
-#   - One key word per phrase marked for yellow/cyan highlight
-#   - 6 quote structures identified from viral channels
-#
-# Quote structures:
-#   BUILD_UP    — builds tension phrase by phrase
-#   IF_THEN     — condition → consequence → karma
-#   REFRAME     — reframes a negative into a positive
-#   DARK_TRUTH  — escalating dark observations about life
-#   ANIMAL      — animal analogy for attitude/strength
-#   NEVER_DO    — list of things a real man never does
+# Fixes:
+#   - No fake stats (97%, 83% etc) — explicitly banned
+#   - Post-generation validation strips any percentage numbers
+#   - 6 viral quote structures in rotation
+#   - Audience-aware prompts per TARGET_AUDIENCE
 # ============================================================
 
 import datetime
@@ -41,79 +33,55 @@ log        = logging.getLogger("QuoteEngine")
 GROQ_MODEL = "llama-3.1-8b-instant"
 _CLIENT    = None
 
-# Quote structure types — picked randomly each run for variety
 QUOTE_STRUCTURES = [
     {
         "name": "BUILD_UP",
-        "description": "Builds tension across 4 phrases. Each phrase adds one more layer.",
-        "example": [
-            {"text": "A MAN BECOMES", "highlight": "MAN"},
-            {"text": "HE LEARNED HOW TO", "highlight": "LEARNED"},
-            {"text": "CONTROL HIS EMOTIONS", "highlight": "EMOTIONS"},
-            {"text": "AND IGNORE GIRLS", "highlight": "IGNORE"},
-        ],
+        "desc": "4 phrases that build tension — each adds one more layer to a truth about a man",
+        "example": '"A MAN BECOMES" / "HE LEARNED HOW TO" / "CONTROL HIS EMOTIONS" / "AND IGNORE DISTRACTIONS"',
         "mood": "attitude",
     },
     {
         "name": "IF_THEN",
-        "description": "IF condition → build up → THEN consequence → karma payback. 4 phrases.",
-        "example": [
-            {"text": "IF YOU HURT SOMEONE", "highlight": "HURT"},
-            {"text": "WITHOUT ANY REASON", "highlight": "REASON"},
-            {"text": "THEN BE READY", "highlight": "READY"},
-            {"text": "KARMA WILL PAY BACK", "highlight": "KARMA"},
-        ],
+        "desc": "IF condition → action → consequence → karma. 4 phrases.",
+        "example": '"IF YOU HURT SOMEONE" / "WITHOUT ANY REASON" / "THEN BE READY" / "KARMA NEVER FORGETS"',
         "mood": "dark_truth",
     },
     {
         "name": "REFRAME",
-        "description": "Takes a negative word and reframes it as strength. 3 phrases.",
-        "example": [
-            {"text": "Every DOWNFALL IS", "highlight": "DOWNFALL"},
-            {"text": "The OPPORTUNITY", "highlight": "OPPORTUNITY"},
-            {"text": "Greatest COMEBACK", "highlight": "COMEBACK"},
-        ],
+        "desc": "Takes a painful word and reframes it as hidden strength. 3 phrases.",
+        "example": '"Every DOWNFALL IS" / "The OPPORTUNITY" / "Greatest COMEBACK"',
         "mood": "mindset",
     },
     {
         "name": "DARK_TRUTH",
-        "description": "Escalating dark observations about modern life. 3 phrases.",
-        "example": [
-            {"text": "14 YEARS IN SCHOOL", "highlight": "SCHOOL"},
-            {"text": "FOR A 30K JOB", "highlight": "30K"},
-            {"text": "THAT'S NOT LIFE", "highlight": "LIFE"},
-        ],
+        "desc": "Escalating dark observations about how life really works. 3 short punchy phrases.",
+        "example": '"YEARS IN SCHOOL" / "FOR A SMALL JOB" / "THAT IS NOT LIFE"',
         "mood": "dark_truth",
     },
     {
-        "name": "ANIMAL_ANALOGY",
-        "description": "Animal analogy for attitude. 2-3 short punchy phrases.",
-        "example": [
-            {"text": "BE CONFIDENT LIKE EAGLE", "highlight": "EAGLE"},
-            {"text": "BEAST LIKE A TIGER", "highlight": "TIGER"},
-            {"text": "SILENT LIKE A WOLF", "highlight": "WOLF"},
-        ],
+        "name": "ANIMAL_POWER",
+        "desc": "Animal analogy for attitude and silent strength. 2-3 phrases.",
+        "example": '"BE CONFIDENT LIKE EAGLE" / "SILENT LIKE A WOLF" / "DEADLY LIKE A TIGER"',
         "mood": "attitude",
     },
     {
         "name": "NEVER_DO",
-        "description": "Things a real man never does. 4-5 short phrases.",
-        "example": [
-            {"text": "NEVER RUN FOR", "highlight": "RUN"},
-            {"text": "A PERSON", "highlight": "PERSON"},
-            {"text": "WHO NEVER", "highlight": "NEVER"},
-            {"text": "WAITED FOR YOU", "highlight": "WAITED"},
-        ],
+        "desc": "Things a real man never does. 4 short phrases each starting action.",
+        "example": '"NEVER RUN FOR" / "A PERSON WHO" / "NEVER WAITED" / "FOR YOU"',
         "mood": "attitude",
     },
 ]
 
-# Forbidden clichés
-BANNED = [
-    "never give up", "keep going", "believe in yourself", "work hard",
-    "hustle", "grind", "stay positive", "dream big", "you got this",
-    "seize the day", "be the best", "rise and shine",
+# ── Banned phrases and patterns ───────────────────────────────
+BANNED_WORDS = [
+    "never give up", "keep going", "believe in yourself",
+    "work hard", "hustle", "grind", "stay positive",
+    "dream big", "you got this", "seize the day",
+    "rise and shine", "be the best",
 ]
+
+# Regex to detect any percentage stat — FIX 3
+STAT_PATTERN = re.compile(r'\b\d+\s*%|\b\d+\s*percent', re.IGNORECASE)
 
 
 def _init_groq() -> Groq:
@@ -163,12 +131,22 @@ def _parse_json(raw: str) -> dict:
     raise ValueError(f"Unclosed JSON:\n{raw[:200]}")
 
 
+def _contains_stat(text: str) -> bool:
+    """Return True if text contains any percentage or fake stat."""
+    return bool(STAT_PATTERN.search(text))
+
+
+def _contains_banned(text: str) -> bool:
+    t = text.lower()
+    return any(b in t for b in BANNED_WORDS)
+
+
 def _load_analytics_ideas() -> list:
     f = LOGS_DIR / "next_week_ideas.json"
     if not f.exists():
         return []
     try:
-        data        = json.loads(f.read_text(encoding="utf-8"))
+        data = json.loads(f.read_text(encoding="utf-8"))
         valid_until = datetime.date.fromisoformat(data.get("valid_until", "2000-01-01"))
         if valid_until < datetime.date.today():
             return []
@@ -183,25 +161,16 @@ def _pick_theme() -> str:
     return random.choice(pool)
 
 
-def _contains_banned(text: str) -> bool:
-    t = text.lower()
-    return any(b in t for b in BANNED)
-
-
 def generate_content() -> dict:
     """
-    Generate phrase-by-phrase quote content.
+    Generate phrase-by-phrase quote.
 
     Returns dict with:
-      phrases  — list of {text, highlight} dicts (3-5 items)
-                 text: the phrase shown on screen (3-6 words, ALL CAPS)
-                 highlight: one key word to show in yellow
-      mood     — attitude | dark_truth | mindset
-      structure — which quote structure was used
-      title    — YouTube title
-      description — 2 sentences
-      content  — full quote joined (for description/backward compat)
-      audience — target audience
+      phrases   — list of {text, highlight} dicts (3-5 items)
+      mood      — attitude | dark_truth | mindset
+      structure — BUILD_UP | IF_THEN | REFRAME | DARK_TRUTH | ANIMAL_POWER | NEVER_DO
+      title     — YouTube title (50-60 chars, 1 emoji)
+      description, content, hook, answer, audience
     """
     theme     = _pick_theme()
     audience  = TARGET_AUDIENCE
@@ -209,64 +178,78 @@ def generate_content() -> dict:
 
     log.info(f"Audience: {audience} | Structure: {structure['name']} | Theme: {theme[:55]}...")
 
-    # Build example string for the prompt
-    example_lines = "\n".join(
-        f'  {{"text": "{p["text"]}", "highlight": "{p["highlight"]}"}}'
-        for p in structure["example"]
-    )
-
-    prompt = f"""You create viral attitude and motivational content for YouTube Shorts.
+    prompt = f"""You create viral attitude and motivational YouTube Shorts content.
 
 CHANNEL: "{CHANNEL_NAME}"
 AUDIENCE: {AUDIENCE_AGE_GROUP}
 TONE: {AUDIENCE_STYLE}
 TOPIC: {theme}
-STRUCTURE: {structure["name"]} — {structure["description"]}
+STRUCTURE TO USE: {structure['name']}
+STRUCTURE DESCRIPTION: {structure['desc']}
+EXAMPLE OF THIS STRUCTURE: {structure['example']}
 
-EXAMPLE OF THIS STRUCTURE:
-{example_lines}
+WRITE A NEW QUOTE using the {structure['name']} structure about: {theme}
 
-YOUR TASK:
-Write a brand new quote using the {structure["name"]} structure.
-The quote should be about: {theme}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRICT RULES — VIOLATIONS WILL BREAK THE PIPELINE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. PHRASES: 3 to 5 phrases. Each phrase = 3 to 6 words MAX.
+2. ALL CAPS for power words, Mixed Case for softer connectors.
+3. highlight = ONE word per phrase that carries maximum emotional weight.
+4. The last phrase MUST be the hardest hitting — the "wahh" moment.
+5. ABSOLUTELY NO percentages, statistics, or numbers like "97%", "83%", "10x".
+   Using any percentage is an automatic failure. Use words like "most", "few", "many".
+6. FORBIDDEN phrases: never give up, hustle, grind, work hard, believe in yourself.
+7. FORBIDDEN topics: girls, women, relationships — keep it about self-improvement only.
 
-RULES FOR PHRASES:
-- 3 to 5 phrases total
-- Each phrase: 3 to 6 words maximum — SHORT and PUNCHY
-- ALL CAPS for hard-hitting words, Mixed Case for softer ones
-- Each phrase must stand alone but connect to the next
-- The last phrase must be the most powerful — the "wahh" moment
-- highlight: ONE key word per phrase that carries the most emotional weight
-- FORBIDDEN: never give up, hustle, grind, work hard, believe in yourself
-- NO fake statistics, NO percentages
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-RULES FOR TITLE:
-- 50-60 characters
-- Hook in first 4 words
-- 1 emoji
-- Makes someone stop scrolling
-
-Return ONLY valid JSON — nothing before or after:
+Return ONLY valid JSON — zero text before or after it:
 {{
   "phrases": [
-    {{"text": "PHRASE ONE HERE", "highlight": "KEYWORD"}},
-    {{"text": "PHRASE TWO HERE", "highlight": "KEYWORD"}},
-    {{"text": "PHRASE THREE HERE", "highlight": "KEYWORD"}},
-    {{"text": "PHRASE FOUR HERE", "highlight": "KEYWORD"}}
+    {{"text": "PHRASE ONE", "highlight": "ONEWORD"}},
+    {{"text": "PHRASE TWO", "highlight": "ONEWORD"}},
+    {{"text": "PHRASE THREE", "highlight": "ONEWORD"}},
+    {{"text": "PHRASE FOUR", "highlight": "ONEWORD"}}
   ],
   "mood": "EXACTLY ONE of: attitude | dark_truth | mindset",
-  "title": "YouTube title here with emoji",
-  "description": "Two sentences expanding on the quote. No hashtags."
+  "title": "50-60 chars, hook in first 4 words, 1 emoji, impossible not to click",
+  "description": "Two sentences about the quote. No hashtags. No percentages."
 }}"""
 
-    raw  = _call_groq(prompt, temperature=0.93)
-    data = _parse_json(raw)
+    # Retry up to 3 times to get clean content
+    data = None
+    for attempt in range(3):
+        raw  = _call_groq(prompt, temperature=0.90 + attempt * 0.03)
+        data = _parse_json(raw)
 
-    # Validate
-    if "phrases" not in data or not data["phrases"]:
-        raise ValueError("Missing 'phrases' field")
-    if len(data["phrases"]) < 2:
-        raise ValueError("Need at least 2 phrases")
+        # Check for stats in all phrases
+        has_stat = any(
+            _contains_stat(p.get("text", ""))
+            for p in data.get("phrases", [])
+        )
+        has_banned = any(
+            _contains_banned(p.get("text", ""))
+            for p in data.get("phrases", [])
+        )
+
+        if not has_stat and not has_banned:
+            break
+
+        if has_stat:
+            log.warning(f"Attempt {attempt+1}: fake stat detected — retrying")
+        if has_banned:
+            log.warning(f"Attempt {attempt+1}: banned phrase detected — retrying")
+
+        if attempt == 2:
+            # Last resort — manually strip any stats from phrases
+            for p in data.get("phrases", []):
+                p["text"] = STAT_PATTERN.sub("many", p.get("text", ""))
+            log.warning("Stripped stats from phrases on final attempt")
+
+    # Validate required fields
+    if not data or "phrases" not in data or len(data.get("phrases", [])) < 2:
+        raise ValueError("Not enough phrases generated")
     for field in ["mood", "title"]:
         if field not in data or not str(data[field]).strip():
             raise ValueError(f"Missing field: '{field}'")
@@ -275,38 +258,41 @@ Return ONLY valid JSON — nothing before or after:
     if data["mood"] not in ["attitude", "dark_truth", "mindset"]:
         data["mood"] = structure.get("mood", "attitude")
 
-    # Clamp to MAX_PHRASES
+    # Clamp phrase count
     data["phrases"] = data["phrases"][:MAX_PHRASES]
 
-    # Ensure each phrase has text + highlight
+    # Clean each phrase
     cleaned = []
     for p in data["phrases"]:
         text      = str(p.get("text", "")).strip()
         highlight = str(p.get("highlight", "")).strip()
         if not text:
             continue
-        # Trim long phrases
+        # Strip stats one more time
+        text = STAT_PATTERN.sub("many", text)
+        # Trim to 7 words max
         words = text.split()
         if len(words) > 7:
             text = " ".join(words[:6])
-        # If highlight not in text, pick last word
-        if highlight.upper() not in text.upper():
+        # Ensure highlight is in text
+        if not highlight or highlight.upper() not in text.upper():
             highlight = text.split()[-1]
-        cleaned.append({"text": text, "highlight": highlight})
+        cleaned.append({"text": text, "highlight": highlight.upper()})
 
     if len(cleaned) < 2:
         raise ValueError("Not enough valid phrases after cleaning")
 
-    data["phrases"]   = cleaned
+    # Build final content dict
+    data["phrases"]     = cleaned
     data["description"] = data.get("description", "") or " ".join(p["text"] for p in cleaned)
-    data["content"]   = " ".join(p["text"] for p in cleaned)
-    data["audience"]  = audience
-    data["structure"] = structure["name"]
-    data["hook"]      = cleaned[0]["text"]   # backward compat
-    data["answer"]    = cleaned[-1]["text"]  # backward compat
+    data["content"]     = " ".join(p["text"] for p in cleaned)
+    data["hook"]        = cleaned[0]["text"]
+    data["answer"]      = cleaned[-1]["text"]
+    data["audience"]    = audience
+    data["structure"]   = structure["name"]
 
-    log.info(f"Generated | mood={data['mood']} | structure={structure['name']} | {len(cleaned)} phrases")
+    log.info(f"Generated | mood={data['mood']} | {len(cleaned)} phrases | {structure['name']}")
     for i, p in enumerate(cleaned):
-        log.info(f"  [{i+1}] {p['text']}  (highlight: {p['highlight']})")
+        log.info(f"  [{i+1}] {p['text']}  (yellow: {p['highlight']})")
 
     return data
