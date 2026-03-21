@@ -1,27 +1,23 @@
-# .github/workflows/weekly_report.yml
-# ============================================================
-# Sends a weekly performance email every Sunday at 9:30 AM IST
-# (= 4:00 UTC Sunday)
-# ============================================================
-
 name: Weekly Report
 
 on:
   schedule:
-    - cron: '0 4 * * 0'    # Sunday 9:30 AM IST
-  workflow_dispatch:         # Manual trigger
+    - cron: '0 4 * * 0'    # Sunday 9:30 AM IST (4:00 UTC)
+  workflow_dispatch:
 
 jobs:
   report:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.4.0
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -30,14 +26,33 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore YouTube token
-        run: echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > youtube_token.json
+        run: |
+          echo "${{ secrets.YOUTUBE_TOKEN_JSON }}" | base64 -d > youtube_token.json
+          echo "✓ youtube_token.json restored"
 
-      - name: Send weekly report
+      - name: Send weekly report + generate content ideas
         env:
           GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
           EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
         run: python analytics.py
+
+      - name: Commit analytics ideas back to repo
+        # This is the critical step — saves the Groq-generated content ideas
+        # so the pipeline can actually use them next week.
+        # Without this, GitHub Actions discards the workspace and ideas are lost.
+        run: |
+          git config user.name  "BillionAire Bot"
+          git config user.email "mohanreddythippireddy14@gmail.com"
+          mkdir -p .logs
+          if [ -f .logs/next_week_ideas.json ]; then
+            git add .logs/next_week_ideas.json
+            git diff --staged --quiet || git commit -m "chore: update weekly content ideas [skip ci]"
+            git push
+            echo "✓ Content ideas committed to repo"
+          else
+            echo "⚠ No ideas file found — analytics may have failed"
+          fi
 
       - name: Clean up
         if: always()
