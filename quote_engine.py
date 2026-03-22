@@ -95,7 +95,6 @@ REPLACEMENT_STYLES = {
 STAT_PATTERN = re.compile(r'\b\d+\s*%|\b\d+\s*percent', re.IGNORECASE)
 
 # ── Comprehensive character replacement map ───────────────────
-# Every character that could break JSON string values or rendering.
 _CHAR_MAP = {
     # Apostrophes / single quotes
     "\u0027": "",   # ' standard apostrophe
@@ -194,64 +193,29 @@ _CHAR_MAP = {
 
 
 def _sanitize_phrase_text(text: str) -> str:
-    """
-    Strip every character that could break JSON or rendering from a phrase string.
-    Applied to phrase text and highlight values AFTER JSON is parsed.
-    Safe to call multiple times — idempotent.
-    """
     if not text:
         return text
-
-    # 1. Unicode normalization — decompose then strip combining marks
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-
-    # 2. Apply full character replacement map
     for char, replacement in _CHAR_MAP.items():
         text = text.replace(char, replacement)
-
-    # 3. Remove any remaining non-ASCII characters
     text = text.encode("ascii", errors="ignore").decode("ascii")
-
-    # 4. Remove any double quotes left inside the value
     text = text.replace('"', "")
-
-    # 5. Collapse multiple spaces → single space, strip edges
     text = re.sub(r" {2,}", " ", text).strip()
-
     return text
 
 
 def _sanitize_raw_json(raw: str) -> str:
-    """
-    Fix common issues in the raw JSON string BEFORE parsing.
-    Only touches characters safe to replace globally
-    (not structural JSON chars like { } [ ] " : ,).
-    """
-    # Smart / curly quotes → straight quotes (structural fix for JSON)
     raw = raw.replace("\u2018", "'").replace("\u2019", "'")
     raw = raw.replace("\u201c", '"').replace("\u201d", '"')
     raw = raw.replace("\u201a", "'").replace("\u201b", "'")
-
-    # Dashes in string values
     raw = raw.replace("\u2013", " ").replace("\u2014", " ")
     raw = raw.replace("\u2015", " ").replace("\u2012", " ")
-
-    # Ellipsis
     raw = raw.replace("\u2026", "...")
-
-    # Non-breaking / zero-width spaces
     raw = raw.replace("\u00a0", " ").replace("\u200b", "").replace("\ufeff", "")
-
-    # Literal newlines inside string values → space
     raw = re.sub(r'(?<=[^\\])\n', ' ', raw)
-
-    # Remove markdown code fences
     raw = re.sub(r"```(?:json)?\s*", "", raw).strip().replace("```", "")
-
-    # Remove trailing commas before } or ] which break JSON
     raw = re.sub(r",\s*([}\]])", r"\1", raw)
-
     return raw
 
 
@@ -288,7 +252,6 @@ def _parse_json(raw: str) -> dict:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-    # Fallback: extract outermost { ... } block
     start = raw.find('{')
     if start == -1:
         raise ValueError(f"No JSON object found:\n{raw[:200]}")
@@ -336,8 +299,7 @@ def generate_content() -> dict:
     """
     Generate phrase-by-phrase quote with natural splits.
     - JSON parse errors retry instead of crashing.
-    - All phrase text sanitized post-parse to remove every
-      character that could cause downstream issues.
+    - All phrase text sanitized post-parse.
     """
     theme     = _pick_theme()
     audience  = TARGET_AUDIENCE
@@ -345,55 +307,67 @@ def generate_content() -> dict:
 
     log.info(f"Audience: {audience} | Structure: {structure['name']} | Theme: {theme[:55]}...")
 
-    prompt = f"""You create viral attitude and motivational YouTube Shorts content.
+    # ── REWRITTEN PROMPT ─────────────────────────────────────────────────────
+    prompt = f"""You write viral attitude content for YouTube Shorts.
 
 CHANNEL: "{CHANNEL_NAME}"
 AUDIENCE: {AUDIENCE_AGE_GROUP}
 TONE: {AUDIENCE_STYLE}
 TOPIC: {theme}
-STRUCTURE TO USE: {structure['name']}
-STRUCTURE DESCRIPTION: {structure['desc']}
-EXAMPLE OF THIS STRUCTURE: {structure['example']}
-
-WRITE A NEW QUOTE using the {structure['name']} structure about: {theme}
+STRUCTURE: {structure['name']} — {structure['desc']}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-THE MOST IMPORTANT RULE — NATURAL PHRASE SPLITTING:
+WHAT MAKES A PHRASE HIT HARD
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Each phrase MUST be a complete grammatical unit that makes
-sense when read alone AND connects naturally to the next phrase.
+Every phrase must feel like a realisation the viewer already
+knew but never had words for. It should make them pause,
+reread it, and want to screenshot it.
 
-Think of it like a spoken pause — split where a person
-would naturally pause when reading aloud.
+Ask yourself before writing each phrase:
+  → Would a 22-year-old send this to their best friend at 2am?
+  → Does it reveal something true that most people are afraid to say?
+  → Does it feel earned — not preachy, not obvious?
 
-GOOD splits — each phrase is a complete thought or clause:
-  "THE STRONGEST MEN" / "NEVER ANNOUNCE" / "THEIR NEXT MOVE"
-  "IF YOU STAY SILENT" / "WHILE THEY TALK" / "YOU ALREADY WON"
-  "REAL POWER" / "IS NOT GIVEN" / "IT IS BUILT IN DARKNESS"
-  "A LION DOES NOT" / "EXPLAIN ITSELF" / "TO SHEEP"
+GREAT phrases expose a hidden truth with zero filler:
+  "THEY CELEBRATE YOUR WINS" / "NEVER YOUR BECOMING"
+  "SILENCE IS NOT WEAKNESS" / "IT IS CONTROLLED POWER"
+  "A WOLF DOES NOT LOSE SLEEP" / "OVER OPINIONS OF SHEEP"
+  "STOP EXPLAINING YOURSELF" / "TO PEOPLE WHO MISREAD YOU ON PURPOSE"
 
-BAD splits — phrases cut mid-thought and make no sense alone:
-  "THE STRONGEST" / "MEN NEVER" / "ANNOUNCE THEIR" / "NEXT MOVE"
-  "IF YOU STAY" / "SILENT WHILE" / "THEY TALK YOU" / "ALREADY WON"
-  "REAL" / "POWER IS" / "NOT GIVEN IT" / "IS BUILT"
+WEAK phrases are vague, preachy, or could appear on any poster:
+  BAD: "BELIEVE IN YOUR JOURNEY"        — says nothing specific
+  BAD: "STAY FOCUSED ON YOUR GOALS"     — generic, zero punch
+  BAD: "SUCCESS REQUIRES SACRIFICE"     — cliche, heard 1000 times
+  BAD: "YOU HAVE THE POWER WITHIN YOU"  — empty motivation
 
-The test: read each phrase alone. Does it make sense?
-If not — you split in the wrong place.
+The difference: GREAT phrases name a SPECIFIC feeling or situation.
+WEAK phrases state obvious advice nobody asked for.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OTHER STRICT RULES:
+PHRASE CONSTRUCTION RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. 3 to 5 phrases total. Each phrase = 3 to 6 words MAX.
-2. ALL CAPS for power words, Mixed Case for softer connectors.
-3. highlight = the ONE word in that phrase with most emotional weight.
-4. Last phrase = hardest hitting — the "wahh" moment.
-5. NO percentages or statistics. Use "most", "few", "many" instead.
-6. FORBIDDEN: never give up, hustle, grind, work hard, believe in yourself.
-7. FORBIDDEN topics: relationships — self-improvement only.
-8. Phrase text must use ONLY plain capital letters A-Z and spaces.
-   No apostrophes, commas, periods, dashes, hyphens, brackets, colons,
-   exclamation marks, question marks, or ANY punctuation whatsoever.
-   Write DONT not DON'T. YOURE not YOU'RE. WONT not WON'T. ITS not IT'S.
+1. 3 to 5 phrases total. 3 to 7 words per phrase.
+2. Each phrase = one complete, standalone idea. Never cut mid-thought.
+3. Phrases must BUILD — each one sharpens or flips the one before it.
+4. The FINAL phrase is the gut-punch. It reframes everything before it.
+5. Use SPECIFIC nouns and verbs. Avoid vague words: things, people,
+   journey, path, way, life, world, power, energy, force.
+6. Use tension — set up an expectation, then break it in the next phrase.
+
+Follow this structure for {structure['name']}:
+{structure['example']}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HARD BANS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+— No percentages or statistics
+— No: hustle, grind, dream big, believe in yourself, never give up,
+       journey, path, potential, mindset shift, level up, next chapter,
+       unleash, inner, greatness, empower, limitless, transform
+— No relationship advice — self-mastery and observation only
+— No punctuation of any kind in phrase text:
+  Write DONT not DON'T  |  WONT not WON'T  |  ITS not IT'S
+— Plain capital letters A-Z and spaces ONLY in phrase text
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -407,8 +381,13 @@ Return ONLY valid JSON — zero text before or after:
   ],
   "mood": "EXACTLY ONE of: attitude | dark_truth | mindset",
   "title": "50-60 chars, hook in first 4 words, 1 emoji, impossible not to click",
-  "description": "Two sentences about the quote. No hashtags. No percentages."
-}}"""
+  "description": "Two sentences expanding on the quote. No hashtags. No percentages."
+}}
+
+highlight = the single word in that phrase carrying the most emotional weight.
+title = written like a human wrote it for someone they know — not an ad.
+"""
+    # ─────────────────────────────────────────────────────────────────────────
 
     data       = None
     last_error = None
@@ -452,7 +431,6 @@ Return ONLY valid JSON — zero text before or after:
 
     data["phrases"] = data["phrases"][:MAX_PHRASES]
 
-    # ── Sanitize all phrase text and highlight values ─────────
     cleaned = []
     for p in data["phrases"]:
         text      = _sanitize_phrase_text(str(p.get("text", "")))
