@@ -26,11 +26,23 @@ def _send(subject: str, html_body: str) -> bool:
             "Add EMAIL_APP_PASSWORD to GitHub Secrets to enable email alerts."
         )
         return False
+    if not EMAIL_SENDER:
+        log.warning(
+            "EMAIL_SENDER not set — email skipped.\n"
+            "Add EMAIL_SENDER to GitHub Secrets and the workflow env block."
+        )
+        return False
+    if not ALERT_EMAIL:
+        log.warning(
+            "ALERT_EMAIL not set — email skipped.\n"
+            "Add ALERT_EMAIL to GitHub Secrets and the workflow env block."
+        )
+        return False
     try:
-        msg              = MIMEMultipart("alternative")
-        msg["Subject"]   = subject
-        msg["From"]      = EMAIL_SENDER
-        msg["To"]        = ALERT_EMAIL
+        msg            = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = EMAIL_SENDER
+        msg["To"]      = ALERT_EMAIL
         msg.attach(MIMEText(html_body, "html"))
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
@@ -57,7 +69,7 @@ def send_error_alert(error: Exception, step: str, content_data: dict = None):
     fix_steps  = _fix_steps(error_msg, step)
     title_info = ""
     if content_data:
-        title_info = f"<p><strong>Content being processed:</strong> {str(content_data.get('title','N/A'))[:120]}</p>"
+        title_info = f"<p><strong>Content being processed:</strong> {str(content_data.get('title', 'N/A'))[:120]}</p>"
 
     html = f"""
 <!DOCTYPE html>
@@ -131,8 +143,8 @@ def _fix_steps(error: str, step: str) -> str:
         return """
 <ol>
   <li>FFmpeg is missing from the GitHub Actions runner</li>
-  <li>Open <strong>.github/workflows/upload.yml</strong> in your repo</li>
-  <li>Make sure this exact line is in the steps section:<br>
+  <li>Open <strong>.github/workflows/upload_us.yml</strong> (or asia/europe) in your repo</li>
+  <li>Make sure this exact step is present:<br>
       <code>- run: sudo apt-get install -y ffmpeg</code></li>
   <li>Commit and push the file — the next run will install FFmpeg automatically</li>
 </ol>"""
@@ -193,7 +205,7 @@ def send_weekly_report(stats: dict):
 <h2 style="color:#FFD700;border-bottom:2px solid #FFD700;padding-bottom:8px;">
   📊 Weekly Report — BillionAire's_Thoughts 😎
 </h2>
-<p style="color:#666;">Week ending {stats.get('week_end','N/A')}</p>
+<p style="color:#666;">Week ending {stats.get('week_end', 'N/A')}</p>
 
 <table style="width:100%;border-collapse:collapse;margin:16px 0;">
   <tr style="background:#FFD700;color:#000;">
@@ -209,19 +221,19 @@ def send_weekly_report(stats: dict):
   <tr>
     <td style="padding:10px;border-bottom:1px solid #eee;">👁️ Total Views</td>
     <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">
-      <strong>{stats.get('total_views','Check YouTube Studio')}</strong>
+      <strong>{stats.get('total_views', 'Check YouTube Studio')}</strong>
     </td>
   </tr>
   <tr style="background:#fafafa;">
     <td style="padding:10px;border-bottom:1px solid #eee;">👥 Subscribers Gained</td>
     <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">
-      <strong>{stats.get('subscribers_gained','Check YouTube Studio')}</strong>
+      <strong>{stats.get('subscribers_gained', 'Check YouTube Studio')}</strong>
     </td>
   </tr>
   <tr>
     <td style="padding:10px;border-bottom:1px solid #eee;">⏱️ Watch Time (hours)</td>
     <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">
-      <strong>{stats.get('watch_time_hours','Check YouTube Studio')}</strong>
+      <strong>{stats.get('watch_time_hours', 'Check YouTube Studio')}</strong>
     </td>
   </tr>
   <tr style="background:#fafafa;">
@@ -234,7 +246,7 @@ def send_weekly_report(stats: dict):
 
 <div style="background:#fff8e1;border-left:4px solid #FFD700;padding:14px;border-radius:4px;margin:16px 0;">
   <strong>💡 Recommendation:</strong><br>
-  {stats.get('recommendation','Keep uploading consistently — 1K subs takes ~30 days of consistency.')}
+  {stats.get('recommendation', 'Keep uploading consistently — 1K subs takes ~30 days of consistency.')}
 </div>
 
 <p style="color:#888;font-size:13px;">
