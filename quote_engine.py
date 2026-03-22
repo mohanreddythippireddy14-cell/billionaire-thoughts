@@ -112,6 +112,11 @@ def _call_groq(prompt: str, temperature: float = 0.93) -> str:
 
 def _parse_json(raw: str) -> dict:
     raw = re.sub(r"```(?:json)?\s*", "", raw).strip().replace("```", "")
+    # 70b model sometimes uses smart quotes — replace with straight quotes
+    raw = raw.replace("\u2018", "'").replace("\u2019", "'")
+    raw = raw.replace("\u201c", '"').replace("\u201d", '"')
+    # Remove any trailing commas before } or ] which break JSON
+    raw = re.sub(r",\s*([}\]])", r"\1", raw)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
