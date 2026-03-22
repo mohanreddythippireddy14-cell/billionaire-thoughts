@@ -1,17 +1,14 @@
 name: Weekly Report
-
 on:
   schedule:
     - cron: '0 4 * * 0'    # Sunday 9:30 AM IST (4:00 UTC)
   workflow_dispatch:
-
 jobs:
   report:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-        contents: write
-
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.2.2
@@ -37,15 +34,19 @@ jobs:
           GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
           EMAIL_SENDER:       ${{ secrets.EMAIL_SENDER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          ALERT_EMAIL:        ${{ secrets.ALERT_EMAIL }}
+          CHANNEL_NAME:       ${{ secrets.CHANNEL_NAME }}
         run: python analytics.py
 
       - name: Commit analytics ideas back to repo
         # This is the critical step — saves the Groq-generated content ideas
         # so the pipeline can actually use them next week.
         # Without this, GitHub Actions discards the workspace and ideas are lost.
+        # next_week_ideas.json is intentionally force-added despite being in .gitignore
+        # so the pipeline can read it on the next run.
         run: |
-          git config user.name  "BillionAire Bot"
-          git config user.email "mohanreddythippireddy14@gmail.com"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p .logs
           if [ -f .logs/next_week_ideas.json ]; then
             git add -f .logs/next_week_ideas.json
