@@ -16,15 +16,15 @@ except ImportError:
 # ============================================================
 # YOUR DETAILS
 # ============================================================
-CHANNEL_NAME      = "BillionAire's _Thoughts"
-CHANNEL_EMOJI     = "😎"
-ALERT_EMAIL       = "mohanreddythippireddy14@gmail.com"
+CHANNEL_NAME  = os.environ.get("CHANNEL_NAME", "")
+CHANNEL_EMOJI = "😎"
+ALERT_EMAIL   = os.environ.get("ALERT_EMAIL", "")
 
 # ============================================================
 # API KEYS
 # ============================================================
 GROQ_API_KEY       = os.environ.get("GROQ_API_KEY", "")
-EMAIL_SENDER       = os.environ.get("EMAIL_SENDER", ALERT_EMAIL)
+EMAIL_SENDER       = os.environ.get("EMAIL_SENDER", "")
 EMAIL_APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "")
 
 # ============================================================
@@ -51,13 +51,13 @@ TARGET_AUDIENCE = os.environ.get("TARGET_AUDIENCE", "us")
 # Outro: 3 seconds
 # Max total: 15 seconds
 # ============================================================
-SECONDS_PER_PHRASE = 2.5   # each phrase stays on screen this long
+SECONDS_PER_PHRASE     = 2.5   # each phrase stays on screen this long
 OUTRO_DURATION_SECONDS = 3
-MAX_PHRASES = 5            # max 5 phrases per quote
+MAX_PHRASES            = 5     # max 5 phrases per quote
 
-VIDEO_WIDTH   = 1080
-VIDEO_HEIGHT  = 1920
-VIDEO_FPS     = 30
+VIDEO_WIDTH  = 1080
+VIDEO_HEIGHT = 1920
+VIDEO_FPS    = 30
 
 # ============================================================
 # AUDIENCE PROFILES
@@ -176,13 +176,13 @@ AUDIENCE_PROFILES = {
 }
 
 # ── Active profile ────────────────────────────────────────────
-_ACTIVE             = AUDIENCE_PROFILES.get(TARGET_AUDIENCE, AUDIENCE_PROFILES["us"])
-CONTENT_THEMES      = _ACTIVE["themes"]
-YOUTUBE_TAGS        = _ACTIVE["tags"]
-YOUTUBE_HASHTAGS    = _ACTIVE["hashtags"]
-DESCRIPTION_CTA     = _ACTIVE["description_cta"]
-AUDIENCE_STYLE      = _ACTIVE["style"]
-AUDIENCE_AGE_GROUP  = _ACTIVE["age_group"]
+_ACTIVE            = AUDIENCE_PROFILES.get(TARGET_AUDIENCE, AUDIENCE_PROFILES["us"])
+CONTENT_THEMES     = _ACTIVE["themes"]
+YOUTUBE_TAGS       = _ACTIVE["tags"]
+YOUTUBE_HASHTAGS   = _ACTIVE["hashtags"]
+DESCRIPTION_CTA    = _ACTIVE["description_cta"]
+AUDIENCE_STYLE     = _ACTIVE["style"]
+AUDIENCE_AGE_GROUP = _ACTIVE["age_group"]
 
 # ============================================================
 # VISUAL THEMES — mood determines Pexels search + accent colour
@@ -214,10 +214,10 @@ VISUAL_THEMES = {
 # ============================================================
 # YOUTUBE SETTINGS
 # ============================================================
-YOUTUBE_PRIVACY      = "public"
-YOUTUBE_CATEGORY_ID  = "26"
-YOUTUBE_LANGUAGE     = "en"
-DAILY_UPLOAD_LIMIT   = 3
+YOUTUBE_PRIVACY     = "public"
+YOUTUBE_CATEGORY_ID = "26"
+YOUTUBE_LANGUAGE    = "en"
+DAILY_UPLOAD_LIMIT  = 3
 
 YOUTUBE_DESCRIPTION_TEMPLATE = """{content}
 
