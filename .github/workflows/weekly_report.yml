@@ -46,7 +46,7 @@ jobs:
           git config user.email "mohanreddythippireddy14@gmail.com"
           mkdir -p .logs
           if [ -f .logs/next_week_ideas.json ]; then
-            git add .logs/next_week_ideas.json
+            git add -f .logs/next_week_ideas.json
             git diff --staged --quiet || git commit -m "chore: update weekly content ideas [skip ci]"
             git push
             echo "✓ Content ideas committed to repo"
