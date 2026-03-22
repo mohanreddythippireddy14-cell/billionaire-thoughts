@@ -10,7 +10,7 @@
 #   5. Groq generates 10 content ideas for next week
 #   6. Ideas saved to .logs/next_week_ideas.json
 #   7. pipeline.py uses those ideas automatically next week
-#   8. Full report emailed to mohanreddythippireddy14@gmail.com
+#   8. Full report emailed to the address in ALERT_EMAIL secret
 #
 # Run manually: python analytics.py
 # ============================================================
@@ -76,23 +76,23 @@ def _fetch_channel_stats(creds) -> dict:
         ).execute()
 
         rows          = resp.get("rows", [])
-        total_views   = sum(int(r[1])   for r in rows)
-        total_minutes = sum(int(r[2])   for r in rows)
-        total_likes   = sum(int(r[3])   for r in rows)
-        subs_gained   = sum(int(r[4])   for r in rows)
-        subs_lost     = sum(int(r[5])   for r in rows)
+        total_views   = sum(int(r[1])    for r in rows)
+        total_minutes = sum(int(r[2])    for r in rows)
+        total_likes   = sum(int(r[3])    for r in rows)
+        subs_gained   = sum(int(r[4])    for r in rows)
+        subs_lost     = sum(int(r[5])    for r in rows)
         avg_duration  = (sum(float(r[6]) for r in rows) / len(rows)) if rows else 0
 
         return {
-            "total_views":     total_views,
-            "watch_time_mins": total_minutes,
-            "watch_time_hours": round(total_minutes / 60, 1),
-            "total_likes":     total_likes,
-            "subs_gained":     subs_gained,
-            "subs_lost":       subs_lost,
-            "net_subs":        subs_gained - subs_lost,
+            "total_views":           total_views,
+            "watch_time_mins":       total_minutes,
+            "watch_time_hours":      round(total_minutes / 60, 1),
+            "total_likes":           total_likes,
+            "subs_gained":           subs_gained,
+            "subs_lost":             subs_lost,
+            "net_subs":              subs_gained - subs_lost,
             "avg_view_duration_sec": round(avg_duration, 1),
-            "period":          f"{start.isoformat()} to {end.isoformat()}",
+            "period":                f"{start.isoformat()} to {end.isoformat()}",
         }
     except Exception as exc:
         log.warning(f"Could not fetch channel stats: {exc}")
@@ -121,13 +121,13 @@ def _fetch_video_stats(creds) -> list:
         videos = []
         for row in resp.get("rows", []):
             videos.append({
-                "video_id":        row[0],
-                "views":           int(row[1]),
-                "watch_mins":      int(row[2]),
-                "likes":           int(row[3]),
-                "subs_gained":     int(row[4]),
+                "video_id":         row[0],
+                "views":            int(row[1]),
+                "watch_mins":       int(row[2]),
+                "likes":            int(row[3]),
+                "subs_gained":      int(row[4]),
                 "avg_duration_sec": round(float(row[5]), 1),
-                "url":             f"https://youtube.com/shorts/{row[0]}",
+                "url":              f"https://youtube.com/shorts/{row[0]}",
             })
         return videos
 
@@ -270,7 +270,7 @@ Return ONLY a valid JSON object, no markdown, no extra text:
     except Exception as exc:
         log.error(f"Groq analysis failed: {exc}")
         return {
-            "analysis":     f"Groq analysis failed: {exc}",
+            "analysis":        f"Groq analysis failed: {exc}",
             "next_week_ideas": [],
         }
 
@@ -469,6 +469,8 @@ def _send_report(channel_stats: dict, videos: list, groq_data: dict,
 # ── Main ──────────────────────────────────────────────────────
 
 def run_weekly_report():
+    from config import ALERT_EMAIL
+
     log.info("=" * 55)
     log.info("  Weekly Analytics — BillionAire's_Thoughts")
     log.info("=" * 55)
@@ -510,7 +512,7 @@ def run_weekly_report():
 
     log.info("=" * 55)
     log.info("  Weekly report complete!")
-    log.info(f"  Email sent to mohanreddythippireddy14@gmail.com")
+    log.info(f"  Email sent to {ALERT_EMAIL}")
     log.info("=" * 55)
 
 
