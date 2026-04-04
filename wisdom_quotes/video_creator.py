@@ -54,7 +54,7 @@ def _pick_music():
     return os.path.join(MUSIC_DIR, random.choice(tracks))
 
 
-def _wrap_quote(quote, width=28):
+def _wrap_quote(quote, width=32):
     """Wrap quote for drawtext. Returns escaped string with \\n line breaks."""
     lines = textwrap.wrap(quote, width=width)
     # Escape single quotes for FFmpeg, join with \n
