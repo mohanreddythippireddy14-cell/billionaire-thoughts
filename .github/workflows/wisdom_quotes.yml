@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests google-auth google-auth-oauthlib google-api-python-client
+          pip install requests google-auth google-auth-oauthlib google-api-python-client tenacity
 
       - name: Install FFmpeg
         run: sudo apt-get install -y ffmpeg
