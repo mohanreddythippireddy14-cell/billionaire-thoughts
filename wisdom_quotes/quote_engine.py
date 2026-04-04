@@ -38,5 +38,6 @@ def get_next_quote():
     used.append(idx)
     _save_used(used)
 
-    print(f"Selected quote #{idx}: {quotes[idx][:60]}...")
-    return f"{quotes[idx]['quote']} — {quotes[idx]['author']}"
+    quote = f"{quotes[idx]['quote']} — {quotes[idx]['author']}"
+    print(f"Selected quote #{idx}: {quote[:60]}...")
+    return quote
