@@ -3,11 +3,13 @@ import random
 import textwrap
 import subprocess
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
 PEXELS_API_KEY = os.environ["PEXELS_API_KEY"]
 PEXELS_URL = "https://api.pexels.com/v1/search"
 MUSIC_DIR = "music"
 OUTPUT_PATH = "wisdom_quotes/output.mp4"
+COMPOSITE_PATH = "wisdom_quotes/composite.jpg"
 
 NATURE_QUERIES = [
     "cinematic nature landscape",
@@ -47,45 +49,57 @@ def _pick_music():
     return os.path.join(MUSIC_DIR, random.choice(tracks))
 
 
-def _escape(text):
-    return text.replace("'", r"'\''").replace(":", r"\:")
+def _draw_text_on_image(img_path, quote_text, author):
+    img = Image.open(img_path).convert("RGB")
+    img = img.resize((1080, 1920), Image.LANCZOS)
 
+    draw = ImageDraw.Draw(img)
 
-def _wrap_quote(quote_text, width=22):
-    lines = textwrap.wrap(quote_text, width=width)
-    return r"\n".join(_escape(line) for line in lines)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+    quote_font = ImageFont.truetype(font_path, 48)
+    author_font = ImageFont.truetype(font_path, 36)
+
+    # Wrap quote text
+    lines = textwrap.wrap(quote_text, width=22)
+    line_height = 60
+    total_height = len(lines) * line_height
+    y = (1920 - total_height) // 2 - 60
+    x = 80
+
+    for line in lines:
+        # Shadow
+        draw.text((x + 2, y + 2), line, font=quote_font, fill=(0, 0, 0, 180))
+        # Main text
+        draw.text((x, y), line, font=quote_font, fill=(255, 255, 255))
+        y += line_height
+
+    # Author bottom right
+    author_text = f"— {author}"
+    bbox = draw.textbbox((0, 0), author_text, font=author_font)
+    author_w = bbox[2] - bbox[0]
+    ax = 1080 - author_w - 80
+    ay = y + 30
+    draw.text((ax + 2, ay + 2), author_text, font=author_font, fill=(0, 0, 0, 180))
+    draw.text((ax, ay), author_text, font=author_font, fill=(255, 255, 255, 220))
+
+    img.save(COMPOSITE_PATH, quality=95)
+    return COMPOSITE_PATH
 
 
 def create_video(quote: str) -> str:
     bg_path = _fetch_pexels_image()
     music_path = _pick_music()
 
-    # Split quote and author
     parts = quote.split(" — ", 1)
     quote_text = parts[0].strip()
-    author = f"— {parts[1].strip()}" if len(parts) > 1 else ""
+    author = parts[1].strip() if len(parts) > 1 else ""
 
-    wrapped = _wrap_quote(quote_text)
-    author_escaped = _escape(author)
-
-    font = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+    composite = _draw_text_on_image(bg_path, quote_text, author)
 
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1", "-i", bg_path,
+        "-loop", "1", "-i", composite,
         "-i", music_path,
-        "-vf",
-        (
-            f"scale=1080:1920,"
-            f"drawtext=fontfile={font}:text='{wrapped}':"
-            f"x=80:y=(h-text_h)/2-60:"
-            f"fontsize=38:fontcolor=white:line_spacing=20:"
-            f"borderw=3:bordercolor=black@0.7,"
-            f"drawtext=fontfile={font}:text='{author_escaped}':"
-            f"x=w-text_w-80:y=(h+text_h)/2+40:"
-            f"fontsize=30:fontcolor=white@0.85:"
-            f"borderw=2:bordercolor=black@0.5"
-        ),
         "-t", str(VIDEO_DURATION),
         "-shortest",
         "-c:v", "libx264",
@@ -98,3 +112,4 @@ def create_video(quote: str) -> str:
     subprocess.run(cmd, check=True)
     print(f"Video created: {OUTPUT_PATH}")
     return OUTPUT_PATH
+    
