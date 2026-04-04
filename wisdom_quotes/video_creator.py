@@ -83,7 +83,7 @@ def create_video(quote: str) -> str:
             f"text='{wrapped}':"
             f"x=(w-text_w)/2-80:"
             f"y=(h-text_h)/2:"
-            f"fontsize=52:"
+            f"fontsize=42:"
             f"fontcolor=white:"
             f"line_spacing=18:"
             f"borderw=3:"
