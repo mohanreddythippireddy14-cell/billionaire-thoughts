@@ -126,8 +126,12 @@ def run():
         print(f"  ✅ PIPELINE COMPLETE — {label}")
         print("═" * 60 + "\n")
 
-    except Exception as exc:
-        log.error(f"Pipeline FAILED at [{step}]: {exc}", exc_info=True)
+    except (Exception, SystemExit) as exc:
+        is_sys_exit = isinstance(exc, SystemExit)
+        if is_sys_exit and exc.code == 0:
+            sys.exit(0)
+            
+        log.error(f"Pipeline FAILED at [{step}]: {exc}", exc_info=not is_sys_exit)
         _log_failure(step, str(exc))
         try:
             from notifier import send_error_alert
@@ -139,7 +143,7 @@ def run():
         print("\n" + "═" * 60)
         print(f"  ❌ PIPELINE FAILED — {step} | Audience: {TARGET_AUDIENCE}")
         print("═" * 60 + "\n")
-        sys.exit(1)
+        sys.exit(exc.code if is_sys_exit and isinstance(exc.code, int) else 1)
 
     finally:
         if video_path and video_path.exists():
