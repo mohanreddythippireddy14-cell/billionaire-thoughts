@@ -62,3 +62,10 @@ jobs:
       - name: Clean up secrets
         if: always()
         run: rm -f youtube_token.json client_secret.json
+
+      - name: Push changes
+        run: |
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git pull --rebase origin main
+            git push
