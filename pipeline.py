@@ -95,12 +95,11 @@ def run():
         size_mb = video_path.stat().st_size / 1_000_000
         print(f"  ✓ Video: {video_path.name} ({size_mb:.1f} MB)")
 
-        # 3. Upload to YouTube
+        # 3. YouTube Upload — DISABLED
         step = "YouTube Upload"
         print(f"\n[3/5] {step}...")
-        from youtube_uploader import upload_to_youtube
-        youtube_id = upload_to_youtube(video_path, content_data)
-        print(f"  ✓ YouTube: https://youtube.com/shorts/{youtube_id}")
+        youtube_id = None
+        print(f"  ⚠ YouTube: skipped (upload disabled)")
 
         # 4. Instagram
         step = "Instagram Upload"
@@ -116,7 +115,7 @@ def run():
         fb_id = upload_to_facebook(video_path, content_data)
         print(f"  {'✓ Facebook: ' + str(fb_id) if fb_id else '⚠ Facebook: skipped'}")
 
-        _log_upload(youtube_id, content_data, {
+        _log_upload(youtube_id or "skipped", content_data, {
             "youtube":   youtube_id,
             "instagram": ig_id,
             "facebook":  fb_id,
