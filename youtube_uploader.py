@@ -38,25 +38,50 @@ def _build_client():
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
+    import os
+    import sys
 
-    if not YOUTUBE_TOKEN_FILE.exists():
-        raise FileNotFoundError(
-            f"youtube_token.json not found.\n"
-            "Run setup_auth.py → update YOUTUBE_TOKEN_JSON in GitHub Secrets."
+    try:
+        is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+        
+        if is_ci:
+            token_json = os.environ.get("YOUTUBE_TOKEN_JSON")
+            if not token_json:
+                raise ValueError("YOUTUBE_TOKEN_JSON environment variable is not set in CI.")
+            raw = json.loads(token_json)
+        else:
+            if not YOUTUBE_TOKEN_FILE.exists():
+                raise FileNotFoundError(
+                    f"youtube_token.json not found.\n"
+                    "Run setup_auth.py → update YOUTUBE_TOKEN_JSON in GitHub Secrets."
+                )
+            raw = json.loads(YOUTUBE_TOKEN_FILE.read_text(encoding="utf-8"))
+
+        creds = Credentials(
+            token         = raw.get("token"),
+            refresh_token = raw.get("refresh_token"),
+            token_uri     = raw.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id     = raw.get("client_id"),
+            client_secret = raw.get("client_secret"),
+            scopes        = raw.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
         )
+        
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Save the refreshed token back to disk if not in CI
+            if not is_ci:
+                YOUTUBE_TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
+                
+        return build("youtube", "v3", credentials=creds)
 
-    raw   = json.loads(YOUTUBE_TOKEN_FILE.read_text(encoding="utf-8"))
-    creds = Credentials(
-        token         = raw.get("token"),
-        refresh_token = raw.get("refresh_token"),
-        token_uri     = raw.get("token_uri", "https://oauth2.googleapis.com/token"),
-        client_id     = raw.get("client_id"),
-        client_secret = raw.get("client_secret"),
-        scopes        = raw.get("scopes", ["https://www.googleapis.com/auth/youtube.upload"]),
-    )
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-    return build("youtube", "v3", credentials=creds)
+    except Exception as e:
+        is_refresh_error = type(e).__name__ == "RefreshError" or "invalid_grant" in str(e)
+        if is_refresh_error:
+            msg = "YouTube token expired. Re-authentication required."
+            log.error(msg)
+            sys.exit(msg)
+        raise
+
 
 
 @retry(
