@@ -1,5 +1,4 @@
 name: Wisdom Quotes - Daily Upload
-
 on:
   schedule:
     - cron: "0 2 * * *"   # 7:30 AM IST
@@ -48,6 +47,7 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.WISDOM_YOUTUBE_TOKEN_JSON }}  # ← ADDED
           CHANNEL_NAME: "WisdomQuotes"
         run: python -m wisdom_quotes.pipeline
 
@@ -65,7 +65,7 @@ jobs:
 
       - name: Push changes
         run: |
-            git config user.name "github-actions"
-            git config user.email "github-actions@github.com"
-            git pull --rebase origin main
-            git push
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git pull --rebase origin main
+          git push
